@@ -78,8 +78,8 @@ async function callGeminiRaw(parts) {
   }
 
   const models = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
     'gemini-flash-latest'
   ];
 
@@ -193,7 +193,7 @@ function tryLocalFallbackCommand(textPrompt) {
     pendingCommand = 'AI_NEXT';
     return { text: 'Chuyển sang bài tiếp theo ngay đây!', lang: 'vi' };
   }
-  if (/(mở bài|phát bài|nghe bài|chơi bài|play )/i.test(q)) {
+  if (/(mở bài|mở một bài|mở nhạc|bật nhạc|phát bài|phát nhạc|nghe bài|nghe nhạc|chơi bài|play )/i.test(q)) {
     const cleaned = q
       .replace(/mở cho tôi bài|mở bài|phát bài|nghe bài|chơi bài|play/gi, '')
       .trim();
