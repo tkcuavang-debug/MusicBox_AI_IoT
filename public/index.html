@@ -15,7 +15,6 @@
       --text: #f8fafc;
       --muted: #94a3b8;
       --accent: #3b82f6;
-      --accent-2: #06b6d4;
       --ok: #22c55e;
       --warn: #f59e0b;
       --err: #ef4444;
@@ -79,12 +78,23 @@
     }
     .now-playing-bar {
       display: none;
-      align-items: center; justify-content: space-between; gap: 10px;
+      align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
       background: linear-gradient(90deg, rgba(59,130,246,0.16), rgba(6,182,212,0.14));
       border: 1px solid rgba(59,130,246,0.35);
       border-radius: 12px; padding: 9px 14px; margin-bottom: 10px; font-size: 13px;
     }
     .now-playing-bar.show { display: flex; }
+
+    .vol-bar-card {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 8px 14px; margin-bottom: 10px; font-size: 13px;
+    }
+    .vol-slider {
+      flex: 1; min-width: 120px; accent-color: #38bdf8; cursor: pointer; height: 6px;
+    }
+    .vol-val { min-width: 40px; text-align: right; font-weight: 700; color: #38bdf8; font-variant-numeric: tabular-nums; }
+
     .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 14px; }
     .msg { max-width: 82%; padding: 12px 16px; border-radius: 16px; line-height: 1.55; font-size: 14.5px; word-wrap: break-word; }
     .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff; border-bottom-right-radius: 4px; box-shadow: 0 4px 14px rgba(2,132,199,0.28); }
@@ -141,7 +151,7 @@
     .clock-val {
       font-size: 38px; font-weight: 800; letter-spacing: 2px;
       background: linear-gradient(90deg, #38bdf8, #818cf8);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       font-variant-numeric: tabular-nums; line-height: 1.1;
     }
     .alarm-sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
@@ -165,7 +175,6 @@
     .gauge-val { font-size: 22px; font-weight: 800; margin-top: -20px; }
     .gauge-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 
-    /* 4 Charts Grid (2x2 on desktop, 1 col on mobile) */
     .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     @media (max-width: 780px) { .charts-grid { grid-template-columns: 1fr; } }
     .chart-card { height: 245px; display: flex; flex-direction: column; }
@@ -202,6 +211,15 @@
             <button class="btn btn-sec" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_NEXT')">Bài tiếp</button>
             <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_STOP')">Dừng</button>
           </div>
+        </div>
+
+        <div class="vol-bar-card">
+          <span style="color:var(--muted);font-weight:600">Âm lượng loa:</span>
+          <button class="btn btn-sec" style="padding:4px 10px;font-size:12px" onclick="stepVolume(-10)">-10%</button>
+          <input id="volSliderChat" class="vol-slider" type="range" min="0" max="100" step="5" value="60"
+                 oninput="previewVolUI(this.value)" onchange="applyVolume(this.value)" />
+          <button class="btn btn-sec" style="padding:4px 10px;font-size:12px" onclick="stepVolume(10)">+10%</button>
+          <span id="volTextChat" class="vol-val">60%</span>
         </div>
 
         <div id="chatBox" class="chat-box">
@@ -249,10 +267,10 @@
             <div id="timeToast" class="toast-msg"></div>
           </div>
 
-          <!-- Card 2: Báo thức & Nhạc chuông -->
+          <!-- Card 2: Báo thức, Nhạc chuông & Âm lượng -->
           <div class="card">
             <div class="card-title">
-              <span>Cài báo thức & Nhạc chuông</span>
+              <span>Cài báo thức, Nhạc chuông & Âm lượng</span>
               <span id="alarmStateBadge" style="color:var(--muted)">Tắt</span>
             </div>
             <div id="ringtoneName" class="ring-badge">Chưa chọn nhạc chuông</div>
@@ -271,6 +289,14 @@
               <button class="btn btn-sec" onclick="sendCmd('TEST_RING')">Thử</button>
               <button class="btn btn-warn" onclick="sendCmd('STOP_ALARM')">Dừng kêu</button>
             </div>
+
+            <div class="ctrl-row" style="margin-top:12px">
+              <span style="font-size:12.5px;color:var(--muted);font-weight:600">Âm lượng:</span>
+              <input id="volSliderSensors" class="vol-slider" type="range" min="0" max="100" step="5" value="60"
+                     oninput="previewVolUI(this.value)" onchange="applyVolume(this.value)" />
+              <span id="volTextSensors" class="vol-val">60%</span>
+            </div>
+
             <div id="alarmToast" class="toast-msg"></div>
           </div>
         </div>
@@ -334,6 +360,7 @@
     const socket = io();
     const ARC_LEN = 251.2;
     let lastSongsCsv = '';
+    let volLockUntil = 0;
 
     function switchTab(tab, btn) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -365,6 +392,26 @@
     function setGauge(id, val, maxVal) {
       const pct = Math.max(0, Math.min(1, Number(val || 0) / maxVal));
       document.getElementById(id).style.strokeDashoffset = (ARC_LEN * (1 - pct)).toFixed(1);
+    }
+
+    function previewVolUI(v) {
+      volLockUntil = Date.now() + 5000;
+      const val = Math.max(0, Math.min(100, Number(v)));
+      document.getElementById('volSliderChat').value = val;
+      document.getElementById('volSliderSensors').value = val;
+      document.getElementById('volTextChat').textContent = val + '%';
+      document.getElementById('volTextSensors').textContent = val + '%';
+    }
+
+    function applyVolume(v) {
+      const val = Math.max(0, Math.min(100, Number(v)));
+      previewVolUI(val);
+      sendCmd('SET_VOL:' + val);
+    }
+
+    function stepVolume(delta) {
+      const cur = Number(document.getElementById('volSliderChat').value || 60);
+      applyVolume(cur + delta);
     }
 
     function makeMiniChart(canvasId, label, color, bg, minY, maxY) {
@@ -421,6 +468,13 @@
     function updateTelemetry(d) {
       document.getElementById('espDot').className = 'brand-dot' + (d.online ? ' online' : '');
       document.getElementById('espStatusText').textContent = d.online ? `ESP32: Mode ${d.mode || 5}` : 'ESP32: Offline';
+
+      if (typeof d.vol === 'number' && Date.now() > volLockUntil) {
+        document.getElementById('volSliderChat').value = d.vol;
+        document.getElementById('volSliderSensors').value = d.vol;
+        document.getElementById('volTextChat').textContent = d.vol + '%';
+        document.getElementById('volTextSensors').textContent = d.vol + '%';
+      }
 
       const npBar = document.getElementById('nowPlayingBar');
       if (d.aiPlaying && d.currentSong) {
@@ -522,7 +576,7 @@
       const r = document.getElementById('ringSelect').value;
       if (!r) return;
       sendCmd('SET_RING:' + r);
-      showToast('alarmToast', 'Đã gửi lệnh đổi nhạc chuông (đồng bộ sang ATmega)!');
+      showToast('alarmToast', 'Đã gửi lệnh đổi nhạc chuông!');
     }
 
     function toggleAlarmAndSave() {
@@ -535,7 +589,7 @@
     function disableAlarm() {
       const val = document.getElementById('alarmTimeInput').value || '00:00';
       sendCmd(`SET_ALARM:${val}:0`);
-      showToast('alarmToast', 'Đã tắt báo thức Web!');
+      showToast('alarmToast', 'Đã tắt báo thức!');
     }
 
     function applyClockTime() {

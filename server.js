@@ -32,6 +32,7 @@ let deviceState = {
   alarmOn: false,
   ringtone: 'Chua chon',
   mode: 5,
+  vol: 60,
   aiPlaying: false,
   currentSong: '',
   songList: [],     // Ten goc (co ca tieng Nhat/Viet/Anh)
@@ -68,39 +69,44 @@ io.on('connection', (socket) => {
   socket.emit('init', { deviceState, chatHistory });
 });
 
-async function callGemini(contents, systemInstructionText = null, temperature = 0.85) {
+async function callGeminiRaw(parts) {
+  if (!GEMINI_KEY) {
+    console.error('[GEMINI ERR] Thieu GEMINI_API_KEY trong bien moi truong!');
+    return null;
+  }
+
+  // Giu fallback on dinh nhat: flash-latest -> 2.0-flash -> 2.5-flash (maxOutputTokens cao de khong bi thinking nuot het)
   const models = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-flash-latest'
+    'gemini-flash-latest',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash'
   ];
 
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-      const payload = {
-        contents,
-        generationConfig: {
-          temperature,
-          maxOutputTokens: 320
-        }
-      };
-      if (systemInstructionText) {
-        payload.systemInstruction = {
-          parts: [{ text: systemInstructionText }]
-        };
-      }
-
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-goog-api-key': GEMINI_KEY
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            temperature: 0.85,
+            maxOutputTokens: 1024
+          }
+        })
       });
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const respParts = data?.candidates?.[0]?.content?.parts || [];
+      const text = respParts
+        .filter((p) => !p.thought && typeof p.text === 'string')
+        .map((p) => p.text)
+        .join('')
+        .trim();
+
       if (text) return text;
       console.error(`[GEMINI ${model} ERR]`, JSON.stringify(data));
     } catch (err) {
@@ -142,7 +148,7 @@ async function buildCleanDisplayNames(rawList) {
       `Return ONLY lines in exact format: INDEX|CLEAN_ASCII_TITLE (only ASCII 32-126, no markdown, no explanations).\n\n` +
       promptLines;
 
-    const result = await callGemini([{ role: 'user', parts: [{ text: prompt }] }], null, 0.2);
+    const result = await callGeminiRaw([{ text: prompt }]);
     if (result) {
       result.split('\n').forEach((line) => {
         const sep = line.indexOf('|');
@@ -179,54 +185,50 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
 
   const nowVn = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
+  // Tom tat lich su 8 luot gan nhat vao context (tranh loi alternate role tren Gemini REST)
+  const validHistory = chatHistory
+    .filter((m) => m.text && !m.text.includes('hơi chập chờn'))
+    .slice(-8)
+    .map((m) => `${m.sender}: ${m.text}`)
+    .join('\n');
+
   const systemContext =
-    `Bạn là trợ lý AI thông minh, nhạy bén, giàu kiến thức và có cá tính dí dỏm thân thiện trong chiếc Hộp Nhạc IoT.\n` +
-    `Thời gian thực hệ thống: ${nowVn}.\n` +
-    `Trạng thái phần cứng hiện tại:\n` +
-    `- Nhiệt độ: ${deviceState.temp}°C | Độ ẩm: ${deviceState.hum}% | Ánh sáng: ${deviceState.light}%\n` +
+    `Bạn là trợ lý AI thông minh, nhạy bén, dí dỏm và thân thiện như một người bạn thân trong Hộp Nhạc IoT.\n` +
+    `Thời gian thực: ${nowVn}.\n` +
+    `Trạng thái phần cứng:\n` +
+    `- Nhiệt độ: ${deviceState.temp}°C | Độ ẩm: ${deviceState.hum}% | Ánh sáng: ${deviceState.light}% | Âm lượng loa: ${deviceState.vol}%\n` +
     `- Nguồn: ${deviceState.usbPower ? 'Đang cắm USB' : deviceState.bat + '% (' + deviceState.batV + 'V)'}\n` +
     `- Đồng hồ: ${deviceState.timeStr} | Báo thức: ${deviceState.alarmStr} (${deviceState.alarmOn ? 'Đang bật' : 'Tắt'}) | Nhạc chuông: ${deviceState.ringtone}\n` +
     `- Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Đang phát') : 'Không'}\n` +
-    `- Kho nhạc SD (${deviceState.songList.length} bài): ${numberedSongs}\n\n` +
-    `CÁCH TRÒ CHUYỆN & TRẢ LỜI:\n` +
-    `1. Bạn là một người bạn thông minh thực thụ: có thể trò chuyện tự nhiên, tâm sự, giải thích kiến thức khoa học/đời sống, gợi ý nhạc theo tâm trạng, nhận xét thời tiết trong phòng từ cảm biến, kể chuyện vui hoặc tranh luận nhẹ nhàng.\n` +
-    `2. KHÔNG tự ý mở nhạc hay gắn thẻ [CMD:...] nếu người dùng chỉ đang hỏi thăm, trò chuyện, hỏi kiến thức, hoặc hỏi thông tin cảm biến/giờ giấc!\n` +
-    `3. Trả lời tự nhiên, súc tích, có hồn (2–4 câu, tối đa ~320 ký tự), KHÔNG dùng ký tự markdown (*, #, _, \`) để hệ thống đọc mượt ra loa.\n` +
-    `4. SONG NGỮ: Nếu người dùng nói/nhắn bằng tiếng Anh, trả lời hoàn toàn bằng tiếng Anh tự nhiên và thêm [LANG:en] ở đầu. Nếu tiếng Việt, trả lời tiếng Việt.\n\n` +
-    `QUY TẮC LỆNH ĐIỀU KHIỂN (chỉ gắn ĐÚNG 1 thẻ ở cuối câu KHI người dùng thật sự yêu cầu hành động):\n` +
-    `- Mở 1 bài cụ thể trong AI (dùng đúng số thứ tự 1..${deviceState.songList.length}): [CMD:AI_PLAY:so_thu_tu]\n` +
-    `- Mở nhạc ngẫu nhiên trong AI: [CMD:AI_PLAY]\n` +
-    `- Đổi bài tiếp theo trong AI: [CMD:AI_NEXT]\n` +
-    `- Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP]\n` +
-    `- Phát tiếp nhạc đang tạm dừng: [CMD:AI_RESUME]\n` +
-    `- Đặt báo thức trên hộp nhạc (HH:MM dạng 24h, trạng thái 1=bật, 0=tắt): [CMD:SET_ALARM:HH:MM:1] hoặc [CMD:SET_ALARM:00:00:0]\n` +
-    `- Chỉnh giờ đồng hồ trên web/hộp nhạc (HH:MM dạng 24h): [CMD:SET_TIME:HH:MM]\n` +
-    `- Đổi nhạc chuông báo thức (không thoát AI): [CMD:SET_RING:so_thu_tu]\n` +
-    `- Nghe thử chuông báo thức ngay: [CMD:TEST_RING]\n` +
-    `- Tắt chuông báo thức đang kêu: [CMD:STOP_ALARM]\n` +
-    `- Chuyển chế độ phần cứng (CHỈ dùng khi người dùng nói rõ muốn chuyển chế độ): [CMD:MENU], [CMD:MODE_1], [CMD:MODE_2], [CMD:MODE_3_PLAY], [CMD:MODE_4]`;
+    `- Kho nhạc SD (${deviceState.songList.length} bài): ${numberedSongs}\n` +
+    (validHistory ? `\nLịch sử trò chuyện gần đây:\n${validHistory}\n` : '') +
+    `\nCÁCH TRÒ CHUYỆN:\n` +
+    `- Bạn là người bạn thông minh thực thụ: có thể trò chuyện tự nhiên, tâm sự, giải thích kiến thức, gợi ý nhạc theo tâm trạng, nhận xét thời tiết từ cảm biến, kể chuyện vui.\n` +
+    `- KHÔNG gắn thẻ [CMD:...] nếu người dùng chỉ đang hỏi thăm, trò chuyện, hỏi kiến thức hoặc hỏi thông tin cảm biến/giờ giấc.\n` +
+    `- Trả lời súc tích, tự nhiên (2–4 câu, tối đa ~300 ký tự), KHÔNG dùng markdown (*, #, _, \`) để đọc mượt ra loa.\n` +
+    `- SONG NGỮ: Nếu người dùng nói/nhắn bằng tiếng Anh, trả lời hoàn toàn bằng tiếng Anh tự nhiên và thêm [LANG:en] ở đầu.\n\n` +
+    `LỆNH ĐIỀU KHIỂN (chỉ gắn ĐÚNG 1 thẻ ở cuối câu KHI người dùng thật sự yêu cầu):\n` +
+    `- Mở đúng 1 bài (dùng số thứ tự 1..${deviceState.songList.length}): [CMD:AI_PLAY:so_thu_tu]\n` +
+    `- Mở nhạc ngẫu nhiên: [CMD:AI_PLAY] | Đổi bài: [CMD:AI_NEXT] | Dừng nhạc: [CMD:AI_STOP] | Phát tiếp: [CMD:AI_RESUME]\n` +
+    `- Chỉnh âm lượng loa (0..100): [CMD:SET_VOL:muc_phan_tram]\n` +
+    `- Đặt báo thức (HH:MM, 1=bật / 0=tắt): [CMD:SET_ALARM:HH:MM:1] hoặc [CMD:SET_ALARM:00:00:0]\n` +
+    `- Chỉnh giờ đồng hồ (HH:MM): [CMD:SET_TIME:HH:MM]\n` +
+    `- Đổi nhạc chuông: [CMD:SET_RING:so_thu_tu] | Thử chuông: [CMD:TEST_RING] | Tắt chuông: [CMD:STOP_ALARM]\n` +
+    `- Chuyển chế độ phần cứng (chỉ khi được yêu cầu rõ): [CMD:MENU], [CMD:MODE_1], [CMD:MODE_2], [CMD:MODE_3_PLAY], [CMD:MODE_4]`;
 
-  // Dua toi da 10 luot hoi thoai gan nhat vao lich su de AI nho ngu canh
-  const recentHistory = chatHistory.slice(-10).map((m) => ({
-    role: m.sender === 'AI' ? 'model' : 'user',
-    parts: [{ text: m.text }]
-  }));
-
-  const currentParts = [];
+  const parts = [{ text: systemContext }];
   if (audioBuffer) {
-    currentParts.push({
+    parts.push({
       inline_data: { mime_type: 'audio/wav', data: audioBuffer.toString('base64') }
     });
-    currentParts.push({ text: 'Hãy nghe kỹ đoạn âm thanh trên (tiếng Việt hoặc tiếng Anh) và phản hồi thật tự nhiên, thông minh theo mạch hội thoại.' });
+    parts.push({ text: 'Nghe đoạn ghi âm trên (tiếng Việt hoặc tiếng Anh) và trả lời tự nhiên.' });
   } else if (textPrompt) {
-    currentParts.push({ text: textPrompt });
+    parts.push({ text: `Người dùng nói: ${textPrompt}` });
   }
 
-  const contents = [...recentHistory, { role: 'user', parts: currentParts }];
-  const rawText = await callGemini(contents, systemContext, 0.85);
-
+  const rawText = await callGeminiRaw(parts);
   if (!rawText) {
-    return { text: 'Mạng tới Gemini hơi chập chờn xíu, bồ nói lại giúp mình nha!', lang: 'vi' };
+    return { text: 'Mạng tới Gemini hơi chập chờn xíu, bồ nói lại giúp mình nha!', lang: 'vi', ok: false };
   }
 
   let cleanReply = rawText;
@@ -250,10 +252,9 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     lang = 'en';
   }
 
-  return { text: cleanReply, lang };
+  return { text: cleanReply, lang, ok: true };
 }
 
-// Chia van ban thanh tung doan <= 180 ky tu de Google TTS doc tron ven khong bi cat giua cau
 function splitTtsChunks(text, maxLen = 180) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (!clean) return [];
@@ -375,8 +376,8 @@ app.post('/api/chat', async (req, res) => {
     const userText = (req.body.text || '').trim();
     if (!userText) return res.status(400).json({ ok: false });
 
-    const { text: replyText, lang } = await askGemini({ textPrompt: userText });
     pushChat('Bạn', userText);
+    const { text: replyText, lang } = await askGemini({ textPrompt: userText });
     await textToMp3File(replyText, lang);
     hasNewAudioForEsp = true;
 
