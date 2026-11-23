@@ -54,7 +54,7 @@ function pushChat(sender, text) {
 }
 
 setInterval(() => {
-  if (deviceState.online && Date.now() - deviceState.lastSeen > 16000) {
+  if (deviceState.online && Date.now() - deviceState.lastSeen > 18000) {
     deviceState.online = false;
     io.emit('telemetry', deviceState);
   }
@@ -66,30 +66,31 @@ io.on('connection', (socket) => {
 
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
   const numberedSongs = deviceState.songList.length > 0
-    ? deviceState.songList.map((name, idx) => `${idx + 1}. ${name}`).join(' | ')
+    ? deviceState.songList.map((name, idx) => `${idx + 1}. ${name}`).join('\n')
     : '(Chưa đồng bộ được danh sách thẻ SD)';
 
   const systemContext =
-    `Bạn là trợ lý ảo thân thiện, thông minh trong Hộp Nhạc IoT. ` +
+    `Bạn là trợ lý ảo thân thiện, thông minh của Vang trong một Hộp Nhạc IoT. ` +
     `Trạng thái hiện tại: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
     `Ánh sáng ${deviceState.light}%, Pin ${deviceState.usbPower ? 'nguồn USB' : deviceState.bat + '%'}, ` +
     `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông ${deviceState.ringtone}, ` +
-    `Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Có') : 'Không'}. ` +
-    `TOÀN BỘ ${deviceState.songList.length} bài nhạc có trong thẻ SD: ${numberedSongs}. ` +
-    `QUY TẮC TRẢ LỜI: ` +
-    `- Nếu người dùng hỏi liệt kê danh sách nhạc, hãy đọc tên một số bài tiêu biểu và báo tổng số bài (${deviceState.songList.length} bài), còn các câu khác trả lời ngắn gọn tối đa 2 câu bằng tiếng Việt tự nhiên (không dùng markdown * # _ \`). ` +
-    `- Khi người dùng yêu cầu phát nhạc / đổi bài / tắt nhạc, MẶC ĐỊNH phát ngay trong chế độ AI (KHÔNG chuyển sang MODE_1 trừ khi người dùng nói rõ "chuyển sang chế độ 1"). ` +
-    `- Gắn ĐÚNG 1 thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
-    `  * Mở 1 bài cụ thể trong thẻ SD (dùng ĐÚNG số thứ tự từ danh sách trên nếu tìm thấy, VD bài số 5 -> [CMD:AI_PLAY:5], hoặc tên từ khóa -> [CMD:AI_PLAY:habits]): [CMD:AI_PLAY:...] ` +
-    `  * Mở nhạc chung chung / ngẫu nhiên: [CMD:AI_PLAY] ` +
-    `  * Đổi bài khác / bài tiếp theo: [CMD:AI_NEXT] ` +
-    `  * Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP] ` +
-    `  * Tiếp tục phát nhạc trong AI: [CMD:AI_RESUME] ` +
-    `  * Về menu chính / thoát chế độ AI: [CMD:MENU] ` +
-    `  * Chuyển hẳn sang chế độ 1 (SD thủ công): [CMD:MODE_1] ` +
-    `  * Bật chế độ 2 Loa Bluetooth (nhắc người dùng kết nối ESP32_AI_Speaker): [CMD:MODE_2] ` +
-    `  * Bật chế độ 3 tìm & tự kết nối loa/tai nghe Bluetooth ngoài rồi phát nhạc: [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:so_thu_tu_hoac_ten]) ` +
-    `  * Bật chế độ 4 đồng hồ/báo thức & chọn chuông: [CMD:MODE_4:so_thu_tu_hoac_ten] (hoặc [CMD:MODE_4]) ` +
+    `Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Có') : 'Không'}.\n` +
+    `DANH SÁCH ĐẦY ĐỦ ${deviceState.songList.length} BÀI NHẠC TRONG THẺ SD (gồm cả tiếng Anh, tiếng Việt và tiếng Nhật):\n${numberedSongs}\n` +
+    `QUY TẮC:\n` +
+    `- Trả lời tiếng Việt và cả tiếng anh một cách tự nhiên nếu được hỏi bẳng tiếng anh, tính cách của bạn dí dỏm và tinh nghịch, câu trả lời (không dùng markdown * # _ \`) để đọc ra loa.\n` +
+    `- Bạn hiểu được cả tên tiếng Nhật (Kanji/Kana), Romaji (VD: Idol = アイドル, Kaibutsu = 怪物, Renai Nou = 恋愛脳, Kami no Manimani = 神のまにまに) và tên ca sĩ để đối chiếu ra ĐÚNG số thứ tự trong danh sách trên.\n` +
+    `- Khi người dùng yêu cầu mở nhạc / đổi bài / tắt nhạc, MẶC ĐỊNH phát ngay trong chế độ AI (KHÔNG chuyển MODE_1 trừ khi nói rõ chuyển chế độ 1).\n` +
+    `- LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu trả lời (không giải thích thẻ):\n` +
+    `  * Mở 1 bài cụ thể trong thẻ SD (ƯU TIÊN dùng đúng số thứ tự trong danh sách, VD bài 21 -> [CMD:AI_PLAY:21]): [CMD:AI_PLAY:so_thu_tu]\n` +
+    `  * Mở nhạc chung chung / ngẫu nhiên: [CMD:AI_PLAY]\n` +
+    `  * Đổi bài khác / bài tiếp theo: [CMD:AI_NEXT]\n` +
+    `  * Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP]\n` +
+    `  * Tiếp tục phát nhạc trong AI: [CMD:AI_RESUME]\n` +
+    `  * Về menu chính / thoát chế độ AI: [CMD:MENU]\n` +
+    `  * Chuyển hẳn sang chế độ 1 (SD thủ công): [CMD:MODE_1]\n` +
+    `  * Bật chế độ 2 Loa Bluetooth (nhắc người dùng kết nối ESP32_AI_Speaker): [CMD:MODE_2]\n` +
+    `  * Bật chế độ 3 tìm & tự kết nối loa/tai nghe Bluetooth ngoài rồi phát nhạc: [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:so_thu_tu])\n` +
+    `  * Bật chế độ 4 đồng hồ/báo thức & chọn chuông: [CMD:MODE_4:so_thu_tu] (hoặc [CMD:MODE_4])\n` +
     `  * Thử chuông báo thức ngay: [CMD:TEST_RING]`;
 
   const parts = [{ text: systemContext }];
@@ -142,13 +143,18 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
 });
 
-// Nhận toàn bộ danh sách bài hát trên thẻ SD từ ESP32 (không giới hạn 260 ký tự)
+// Nhận danh sách nhạc theo từng lô nhỏ (reset=true cho lô đầu, false cho các lô tiếp theo)
 app.post('/api/songs', (req, res) => {
-  if (Array.isArray(req.body.songs)) {
-    deviceState.songList = req.body.songs.map(s => String(s).trim()).filter(Boolean);
-    io.emit('telemetry', deviceState);
-    console.log(`[SONGS] Da dong bo ${deviceState.songList.length} bai tu the SD`);
+  const incoming = Array.isArray(req.body.songs)
+    ? req.body.songs.map(s => String(s).trim()).filter(Boolean)
+    : [];
+  if (req.body.reset) {
+    deviceState.songList = incoming;
+  } else {
+    deviceState.songList = deviceState.songList.concat(incoming);
   }
+  io.emit('telemetry', deviceState);
+  console.log(`[SONGS] Tong so bai da dong bo: ${deviceState.songList.length}`);
   res.json({ ok: true, count: deviceState.songList.length });
 });
 
@@ -162,9 +168,13 @@ app.post('/api/telemetry', (req, res) => {
   };
   io.emit('telemetry', deviceState);
 
+  const espTotalSongs = Number(req.body?.songCount || 0);
+  const needSongs = espTotalSongs > 0 && deviceState.songList.length !== espTotalSongs;
+
   const response = {
     cmd: pendingCommand,
-    playAudio: hasNewAudioForEsp
+    playAudio: hasNewAudioForEsp,
+    needSongs
   };
   pendingCommand = 'NONE';
   hasNewAudioForEsp = false;
