@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hộp Nhạc AI & IoT</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+    .card { background: #1e293b; padding: 14px; border-radius: 12px; text-align: center; }
+    .val { font-size: 24px; font-weight: bold; color: #38bdf8; }
+    .chat-box { background: #1e293b; height: 240px; overflow-y: auto; padding: 12px; border-radius: 12px; margin-bottom: 10px; }
+    .msg { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: #334155; font-size: 14px; }
+    .msg.ai { background: #0369a1; }
+    .row { display: flex; gap: 8px; }
+    input { flex: 1; padding: 10px; border-radius: 8px; border: none; background: #334155; color: #fff; }
+    button { padding: 10px 14px; border: none; border-radius: 8px; background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; }
+    .btn-mic { background: #e11d48; }
+    .controls { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h3>Hộp Nhạc AI & IoT Dashboard</h3>
+  <div class="grid">
+    <div class="card">Nhiệt độ<div class="val" id="temp">--°C</div></div>
+    <div class="card">Độ ẩm<div class="val" id="hum">--%</div></div>
+    <div class="card">Ánh sáng<div class="val" id="light">--%</div></div>
+    <div class="card">Pin 18650<div class="val" id="bat">--%</div></div>
+  </div>
+
+  <div class="chat-box" id="chat"></div>
+  <div class="row">
+    <input id="txt" placeholder="Nhắn cho trợ lý AI (ESP32 sẽ nói)..." />
+    <button onclick="sendText()">Gửi</button>
+    <button class="btn-mic" onclick="startMic()">Mic</button>
+  </div>
+
+  <div class="controls">
+    <button onclick="sendCmd('TEST_RING')">Thử chuông</button>
+    <button onclick="sendCmd('MODE_1')">Về Mode 1 (SD)</button>
+    <button onclick="sendCmd('MODE_2')">Về Mode 2 (Loa BT)</button>
+  </div>
+
+  <script>
+    const socket = io();
+    const chat = document.getElementById('chat');
+
+    socket.on('telemetry', d => {
+      document.getElementById('temp').innerText = d.temp + '°C';
+      document.getElementById('hum').innerText = d.hum + '%';
+      document.getElementById('light').innerText = d.light + '%';
+      document.getElementById('bat').innerText = d.bat >= 0 ? (d.bat + '%') : 'USB';
+    });
+
+    socket.on('chat', m => {
+      const div = document.createElement('div');
+      div.className = 'msg' + (m.sender === 'AI' ? ' ai' : '');
+      div.innerText = `${m.sender}: ${m.text}`;
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    });
+
+    async function sendText() {
+      const inp = document.getElementById('txt');
+      if (!inp.value.trim()) return;
+      const text = inp.value.trim();
+      inp.value = '';
+      await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+    }
+
+    async function sendCmd(cmd) {
+      await fetch('/api/command', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd })
+      });
+    }
+
+    // Dùng Micro điện thoại / laptop qua Web Speech API (tiếng Việt)
+    function startMic() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return alert('Trình duyệt không hỗ trợ Mic!');
+      const rec = new SR();
+      rec.lang = 'vi-VN';
+      rec.onresult = e => {
+        document.getElementById('txt').value = e.results[0][0].transcript;
+        sendText();
+      };
+      rec.start();
+    }
+  </script>
+</body>
+</html>
