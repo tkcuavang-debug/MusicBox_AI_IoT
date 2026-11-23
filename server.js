@@ -29,15 +29,16 @@ let hasNewAudioForEsp = false;
 // Gọi Gemini với danh sách model dự phòng (tránh lỗi 503 quá tải)
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
 const systemContext =
-  `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT (giống XiaoZhi). ` +
-  `Dữ liệu cảm biến hiện tại của phòng: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
-  `Ánh sáng ${deviceState.light}%, Pin hộp nhạc ${deviceState.bat}%, Giờ ${deviceState.timeStr}. ` +
-  `Trả lời ngắn gọn bằng tiếng Việt tự nhiên (tối đa 2 câu, không dùng ký tự đặc biệt/markdown) để đọc ra loa. ` +
-  `Nếu người dùng yêu cầu mở nhạc hoặc phát nhạc thẻ nhớ, hãy thêm chính xác cụm [CMD:MODE_1] ở cuối câu trả lời. ` +
-  `Nếu yêu cầu bật loa Bluetooth, thêm [CMD:MODE_2] ở cuối. ` +
-  `Nếu yêu cầu thử chuông báo thức, thêm [CMD:TEST_RING] ở cuối.`;
-
-  const parts = [{ text: systemContext }];
+    `Bạn là trợ lý ảo thông minh của Vang (giống XiaoZhi). ` +
+    `Dữ liệu cảm biến hiện tại của phòng: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
+    `Ánh sáng ${deviceState.light}%, Pin hộp nhạc ${deviceState.bat}%, Giờ ${deviceState.timeStr}. ` +
+    `Trả lời  bằng tiếng Việt tự nhiên, dí dỏm như một cô gái hướng ngoại và năng động để đọc ra loa. ` +
+    `Khi người dùng ra lệnh điều khiển thiết bị, hãy gắn đúng một thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
+    `- Mở nhạc thẻ SD chung chung: [CMD:MODE_1] ` +
+    `- Mở đúng bài nhạc cụ thể trong thẻ SD (ví dụ "mở bài mùa xuân"): [CMD:PLAY_SONG:mùa xuân] ` +
+    `- Bật chế độ 2 để người dùng kết nối Bluetooth vào hộp nhạc: [CMD:MODE_2] ` +
+    `- Kết nối loa Bluetooth (chế độ 3) và phát nhạc: [CMD:MODE_3_PLAY] ` +
+    `- Bật chế độ 4 báo thức/nhạc chuông (kèm tên/loại chuông nếu có, ví dụ "chuông nhẹ" hoặc "mặc định"): [CMD:MODE_4:chuông nhẹ]`;
   if (audioBuffer) {
     parts.push({
       inline_data: { mime_type: "audio/wav", data: audioBuffer.toString('base64') }
@@ -65,15 +66,15 @@ const models = [
       });
       const data = await res.json();
         const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (text) {
-  let cleanReply = text;
-  const cmdMatch = cleanReply.match(/\[CMD:(MODE_1|MODE_2|TEST_RING)\]/);
-  if (cmdMatch) {
-    pendingCommand = cmdMatch[1];
-    cleanReply = cleanReply.replace(cmdMatch[0], '');
-  }
-  return cleanReply.replace(/[*#_`]/g, '').trim();
-}
+if (text) {
+      let cleanReply = text;
+      const cmdMatch = cleanReply.match(/\[CMD:([A-Z0-9_]+(?::[^\]]+)?)\]/);
+      if (cmdMatch) {
+        pendingCommand = cmdMatch[1];
+        cleanReply = cleanReply.replace(cmdMatch[0], '');
+      }
+      return cleanReply.replace(/[*#_`]/g, '').trim();
+    }
 
       // Model này không trả về văn bản (quá tải / sai tên model) -> thử model kế tiếp
       console.warn(`[GEMINI] ${model} khong co ket qua:`, JSON.stringify(data?.error || data).slice(0, 200));
