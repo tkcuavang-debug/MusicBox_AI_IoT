@@ -22,13 +22,16 @@ let deviceState = {
   temp: 0,
   hum: 0,
   light: 0,
-  bat: 0,
+  bat: -1,
   batV: 0,
-  charging: false,
   usbPower: true,
+  charging: false,
   timeStr: '--:--:--',
-  ringtone: 'Mac dinh',
-  mode: 4,
+  alarmStr: '--:--',
+  alarmOn: false,
+  ringtone: 'Chua chon',
+  mode: 5,
+  songs: '',
   online: false,
   lastSeen: 0
 };
@@ -48,7 +51,6 @@ function pushChat(sender, text) {
   io.emit('chat', msg);
 }
 
-// Kiểm tra kết nối thiết bị mỗi 10 giây
 setInterval(() => {
   if (deviceState.online && Date.now() - deviceState.lastSeen > 15000) {
     deviceState.online = false;
@@ -61,20 +63,22 @@ io.on('connection', (socket) => {
 });
 
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
+  const songInfo = deviceState.songs ? `Danh sách bài nhạc trong thẻ SD: ${deviceState.songs}. ` : '';
   const systemContext =
-    `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT. ` +
-    `Dữ liệu hiện tại: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
-    `Ánh sáng ${deviceState.light}%, Pin ${deviceState.usbPower ? 'đang cắm USB' : deviceState.bat + '%'}, ` +
-    `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông ${deviceState.ringtone}. ` +
-    `Trả lời ngắn gọn, tự nhiên bằng tiếng Việt (tối đa 2 câu, không markdown/ký tự đặc biệt) để đọc ra loa. ` +
-    `Nếu người dùng ra lệnh điều khiển hộp nhạc, LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu (không giải thích thẻ): ` +
-    `- Về menu chính / thoát chế độ AI: [CMD:MENU] ` +
-    `- Mở nhạc thẻ SD ngẫu nhiên/chung chung: [CMD:MODE_1] ` +
-    `- Mở đúng tên bài nhạc cụ thể trong thẻ SD (VD: "mở bài mùa xuân"): [CMD:PLAY_SONG:mua xuan] ` +
-    `- Bật chế độ 2 loa Bluetooth (nhắc người dùng bật Bluetooth kết nối vào hộp nhạc): [CMD:MODE_2] ` +
-    `- Kết nối loa Bluetooth ngoài (chế độ 3), tìm thiết bị lân cận và phát nhạc: [CMD:MODE_3_PLAY] ` +
-    `- Bật chế độ 5 đồng hồ/ATmega và chọn nhạc chuông theo yêu cầu (VD: "chọn chuông 2"): [CMD:MODE_5:chuong 2] ` +
-    `- Thử chuông báo thức: [CMD:TEST_RING]`;
+    `Bạn là trợ lý ảo thông minh của Vang tên của bạn sẽ là Rae. ` +
+    `Trạng thái hiện tại: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
+    `Ánh sáng ${deviceState.light}%, Pin ${deviceState.usbPower ? 'nguồn USB' : deviceState.bat + '%'}, ` +
+    `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông hiện tại ${deviceState.ringtone}. ` +
+    songInfo +
+    `Trả lời dí dỏm, tinh nghịch, tự nhiên bằng tiếng Việt và cả tiếng anh nếu câu hỏi bằng tiếng anh, nếu người dùng đọc tiếng anh phát âm sai thì chủ động nhắc nhở kèm giải thích trước khi trả lời, tựa như một người bạn thay vì chủ tớ ( không markdown/ký tự đặc biệt) để đọc ra loa. ` +
+    `Nếu người dùng ra lệnh điều khiển hộp nhạc, LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
+    `- Về menu chính / thoát AI: [CMD:MENU] ` +
+    `- Bật nhạc từ thẻ SD chung chung: [CMD:MODE_1] ` +
+    `- Mở đúng tên bài nhạc cụ thể trong thẻ SD (ưu tiên chọn khớp danh sách thẻ SD ở trên, VD "mở bài mùa xuân"): [CMD:PLAY_SONG:mua xuan] ` +
+    `- Bật chế độ 2 Loa Bluetooth (và nhắc người dùng mở Bluetooth kết nối ESP32_AI_Speaker): [CMD:MODE_2] ` +
+    `- Tìm & tự kết nối loa/tai nghe Bluetooth lân cận rồi phát nhạc (chế độ 3): [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:ten bai] nếu có yêu cầu bài) ` +
+    `- Bật chế độ 4 đồng hồ/báo thức và chọn nhạc chuông theo yêu cầu: [CMD:MODE_4:ten chuong] (hoặc [CMD:MODE_4]) ` +
+    `- Thử chuông báo thức ngay: [CMD:TEST_RING]`;
 
   const parts = [{ text: systemContext }];
   if (audioBuffer) {
@@ -133,12 +137,10 @@ async function textToMp3File(text) {
   fs.writeFileSync(REPLY_MP3_PATH, buf);
 }
 
-// Endpoint kiểm tra Render đã thức & sẵn sàng cho ESP32
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
 });
 
-// 1. ESP32 gửi trạng thái định kỳ & nhận lệnh/audio mới
 app.post('/api/telemetry', (req, res) => {
   deviceState = {
     ...deviceState,
@@ -157,7 +159,6 @@ app.post('/api/telemetry', (req, res) => {
   res.json(response);
 });
 
-// 2. ESP32 gửi file ghi âm WAV từ INMP441
 app.post('/api/voice', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Thiếu file audio' });
@@ -176,7 +177,6 @@ app.post('/api/voice', upload.single('audio'), async (req, res) => {
   }
 });
 
-// 3. Web gửi tin nhắn -> AI trả lời & ESP32 tự phát giọng nói
 app.post('/api/chat', async (req, res) => {
   try {
     const userText = (req.body.text || '').trim();
@@ -195,13 +195,11 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// 4. Web gửi lệnh điều khiển trực tiếp
 app.post('/api/command', (req, res) => {
   pendingCommand = (req.body.cmd || 'NONE').trim();
   res.json({ ok: true, cmd: pendingCommand });
 });
 
-// 5. ESP32 tải file MP3 giọng nói AI
 app.get('/api/reply.mp3', (req, res) => {
   if (!fs.existsSync(REPLY_MP3_PATH)) return res.status(404).end();
   res.sendFile(REPLY_MP3_PATH);
