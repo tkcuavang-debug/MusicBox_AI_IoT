@@ -28,11 +28,14 @@ let hasNewAudioForEsp = false;
 
 // Gọi Gemini với danh sách model dự phòng (tránh lỗi 503 quá tải)
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
-  const systemContext =
-    `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT (giống XiaoZhi). ` +
-    `Dữ liệu cảm biến hiện tại của phòng: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
-    `Ánh sáng ${deviceState.light}%, Pin hộp nhạc ${deviceState.bat}%, Giờ ${deviceState.timeStr}. ` +
-    `Trả lời ngắn gọn bằng tiếng Việt tự nhiên (tối đa 2 câu, không dùng ký tự đặc biệt/markdown) để đọc ra loa.`;
+const systemContext =
+  `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT (giống XiaoZhi). ` +
+  `Dữ liệu cảm biến hiện tại của phòng: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
+  `Ánh sáng ${deviceState.light}%, Pin hộp nhạc ${deviceState.bat}%, Giờ ${deviceState.timeStr}. ` +
+  `Trả lời ngắn gọn bằng tiếng Việt tự nhiên (tối đa 2 câu, không dùng ký tự đặc biệt/markdown) để đọc ra loa. ` +
+  `Nếu người dùng yêu cầu mở nhạc hoặc phát nhạc thẻ nhớ, hãy thêm chính xác cụm [CMD:MODE_1] ở cuối câu trả lời. ` +
+  `Nếu yêu cầu bật loa Bluetooth, thêm [CMD:MODE_2] ở cuối. ` +
+  `Nếu yêu cầu thử chuông báo thức, thêm [CMD:TEST_RING] ở cuối.`;
 
   const parts = [{ text: systemContext }];
   if (audioBuffer) {
@@ -62,16 +65,14 @@ const models = [
       });
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        return text.replace(/[*#_`]/g, '').trim();
-      }
-      console.error(`[GEMINI ${model} ERR]`, JSON.stringify(data));
-    } catch (err) {
-      console.error(`[GEMINI ${model} FETCH ERR]`, err.message);
-    }
+    if (text) {
+  let cleanReply = text;
+  const cmdMatch = cleanReply.match(/\[CMD:(MODE_1|MODE_2|TEST_RING)\]/);
+  if (cmdMatch) {
+    pendingCommand = cmdMatch[1];
+    cleanReply = cleanReply.replace(cmdMatch[0], '');
   }
-
-  return "Xin lỗi, hệ thống AI đang bận, bạn thử lại sau vài giây nhé.";
+  return cleanReply.replace(/[*#_`]/g, '').trim();
 }
 
 // Chuyển text tiếng Việt thành file MP3 nhẹ cho ESP32 tải về phát
