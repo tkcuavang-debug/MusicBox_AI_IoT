@@ -64,7 +64,7 @@ const models = [
         body: JSON.stringify({ contents: [{ parts }] })
       });
       const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (text) {
   let cleanReply = text;
   const cmdMatch = cleanReply.match(/\[CMD:(MODE_1|MODE_2|TEST_RING)\]/);
@@ -73,6 +73,15 @@ const models = [
     cleanReply = cleanReply.replace(cmdMatch[0], '');
   }
   return cleanReply.replace(/[*#_`]/g, '').trim();
+}
+
+      // Model này không trả về văn bản (quá tải / sai tên model) -> thử model kế tiếp
+      console.warn(`[GEMINI] ${model} khong co ket qua:`, JSON.stringify(data?.error || data).slice(0, 200));
+    } catch (err) {
+      console.error(`[GEMINI] Loi voi ${model}:`, err.message);
+    }
+  }
+  throw new Error('Tat ca model Gemini deu that bai');
 }
 
 // Chuyển text tiếng Việt thành file MP3 nhẹ cho ESP32 tải về phát
