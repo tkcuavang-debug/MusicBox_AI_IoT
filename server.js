@@ -26,7 +26,7 @@ let deviceState = {
 let pendingCommand = "NONE";
 let hasNewAudioForEsp = false;
 
-// Gọi Gemini 2.5 Flash (hỗ trợ cả Text lẫn Audio WAV từ INMP441)
+// Gọi Gemini với danh sách model dự phòng (tránh lỗi 503 quá tải)
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
   const systemContext =
     `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT (giống XiaoZhi). ` +
@@ -44,26 +44,40 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     parts.push({ text: `Người dùng hỏi: ${textPrompt}` });
   }
 
-const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
-const res = await fetch(url, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-goog-api-key': GEMINI_KEY
-  },
-  body: JSON.stringify({ contents: [{ parts }] })
-});
-  const data = await res.json();
-  if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-    console.error('[GEMINI ERROR]', JSON.stringify(data));
+  const models = [
+    'gemini-2.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-flash-latest'
+  ];
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': GEMINI_KEY
+        },
+        body: JSON.stringify({ contents: [{ parts }] })
+      });
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        return text.replace(/[*#_`]/g, '').trim();
+      }
+      console.error(`[GEMINI ${model} ERR]`, JSON.stringify(data));
+    } catch (err) {
+      console.error(`[GEMINI ${model} FETCH ERR]`, err.message);
+    }
   }
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Xin lỗi, tôi chưa nghe rõ.";
-  return reply.replace(/[*#_`]/g, '').trim();
+
+  return "Xin lỗi, hệ thống AI đang bận, bạn thử lại sau vài giây nhé.";
 }
 
 // Chuyển text tiếng Việt thành file MP3 nhẹ cho ESP32 tải về phát
 async function textToMp3File(text) {
-  const shortText = text.slice(0, 190); // Giới hạn 1 câu gọn cho TTS
+  const shortText = text.slice(0, 190);
   const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(shortText)}&tl=vi&client=tw-ob`;
   const res = await fetch(ttsUrl, {
     headers: { 'User-Agent': 'Mozilla/5.0' }
@@ -110,7 +124,7 @@ app.post('/api/chat', async (req, res) => {
 
     const replyText = await askGemini({ textPrompt: userText });
     await textToMp3File(replyText);
-    hasNewAudioForEsp = true; // Báo ESP32 tải về phát ra loa
+    hasNewAudioForEsp = true;
 
     io.emit('chat', { sender: 'AI', text: replyText });
     res.json({ ok: true, reply: replyText });
@@ -120,7 +134,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// 4. Web App gửi lệnh điều khiển phần cứng (VD: NEXT, TEST_RING, MODE_1)
+// 4. Web App gửi lệnh điều khiển phần cứng (VD: TEST_RING, MODE_1, MODE_2)
 app.post('/api/command', (req, res) => {
   pendingCommand = req.body.cmd || "NONE";
   res.json({ ok: true, cmd: pendingCommand });
