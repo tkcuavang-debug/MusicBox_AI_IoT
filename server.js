@@ -44,12 +44,11 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     parts.push({ text: `Người dùng hỏi: ${textPrompt}` });
   }
 
-  const models = [
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
-    'gemini-flash-latest'
-  ];
-
+const models = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest'
+];
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
