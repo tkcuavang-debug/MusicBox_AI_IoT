@@ -18,41 +18,80 @@ const PORT = process.env.PORT || 3000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
 const REPLY_MP3_PATH = path.join(__dirname, 'latest_reply.mp3');
 
-// Trạng thái hệ thống dùng chung giữa ESP32 và Web App
 let deviceState = {
-  temp: 0, hum: 0, light: 0, bat: 0, batV: 0,
-  timeStr: '--:--:--', online: false, lastSeen: 0
+  temp: 0,
+  hum: 0,
+  light: 0,
+  bat: 0,
+  batV: 0,
+  charging: false,
+  usbPower: true,
+  timeStr: '--:--:--',
+  ringtone: 'Mac dinh',
+  mode: 4,
+  online: false,
+  lastSeen: 0
 };
-let pendingCommand = "NONE";
+
+let chatHistory = [];
+let pendingCommand = 'NONE';
 let hasNewAudioForEsp = false;
 
-// Gọi Gemini với danh sách model dự phòng (tránh lỗi 503 quá tải)
+function pushChat(sender, text) {
+  const msg = {
+    sender,
+    text,
+    time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  };
+  chatHistory.push(msg);
+  if (chatHistory.length > 40) chatHistory.shift();
+  io.emit('chat', msg);
+}
+
+// Kiểm tra kết nối thiết bị mỗi 10 giây
+setInterval(() => {
+  if (deviceState.online && Date.now() - deviceState.lastSeen > 15000) {
+    deviceState.online = false;
+    io.emit('telemetry', deviceState);
+  }
+}, 5000);
+
+io.on('connection', (socket) => {
+  socket.emit('init', { deviceState, chatHistory });
+});
+
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
-const systemContext =
-    `Bạn là trợ lý ảo thông minh của Vang (giống XiaoZhi). ` +
-    `Dữ liệu cảm biến hiện tại của phòng: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
-    `Ánh sáng ${deviceState.light}%, Pin hộp nhạc ${deviceState.bat}%, Giờ ${deviceState.timeStr}. ` +
-    `Trả lời  bằng tiếng Việt tự nhiên, dí dỏm như một cô gái hướng ngoại và năng động để đọc ra loa. ` +
-    `Khi người dùng ra lệnh điều khiển thiết bị, hãy gắn đúng một thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
-    `- Mở nhạc thẻ SD chung chung: [CMD:MODE_1] ` +
-    `- Mở đúng bài nhạc cụ thể trong thẻ SD (ví dụ "mở bài mùa xuân"): [CMD:PLAY_SONG:mùa xuân] ` +
-    `- Bật chế độ 2 để người dùng kết nối Bluetooth vào hộp nhạc: [CMD:MODE_2] ` +
-    `- Kết nối loa Bluetooth (chế độ 3) và phát nhạc: [CMD:MODE_3_PLAY] ` +
-    `- Bật chế độ 4 báo thức/nhạc chuông (kèm tên/loại chuông nếu có, ví dụ "chuông nhẹ" hoặc "mặc định"): [CMD:MODE_4:chuông nhẹ]`;
+  const systemContext =
+    `Bạn là trợ lý ảo thông minh trong Hộp Nhạc IoT. ` +
+    `Dữ liệu hiện tại: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
+    `Ánh sáng ${deviceState.light}%, Pin ${deviceState.usbPower ? 'đang cắm USB' : deviceState.bat + '%'}, ` +
+    `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông ${deviceState.ringtone}. ` +
+    `Trả lời ngắn gọn, tự nhiên bằng tiếng Việt (tối đa 2 câu, không markdown/ký tự đặc biệt) để đọc ra loa. ` +
+    `Nếu người dùng ra lệnh điều khiển hộp nhạc, LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu (không giải thích thẻ): ` +
+    `- Về menu chính / thoát chế độ AI: [CMD:MENU] ` +
+    `- Mở nhạc thẻ SD ngẫu nhiên/chung chung: [CMD:MODE_1] ` +
+    `- Mở đúng tên bài nhạc cụ thể trong thẻ SD (VD: "mở bài mùa xuân"): [CMD:PLAY_SONG:mua xuan] ` +
+    `- Bật chế độ 2 loa Bluetooth (nhắc người dùng bật Bluetooth kết nối vào hộp nhạc): [CMD:MODE_2] ` +
+    `- Kết nối loa Bluetooth ngoài (chế độ 3), tìm thiết bị lân cận và phát nhạc: [CMD:MODE_3_PLAY] ` +
+    `- Bật chế độ 5 đồng hồ/ATmega và chọn nhạc chuông theo yêu cầu (VD: "chọn chuông 2"): [CMD:MODE_5:chuong 2] ` +
+    `- Thử chuông báo thức: [CMD:TEST_RING]`;
+
+  const parts = [{ text: systemContext }];
   if (audioBuffer) {
     parts.push({
-      inline_data: { mime_type: "audio/wav", data: audioBuffer.toString('base64') }
+      inline_data: { mime_type: 'audio/wav', data: audioBuffer.toString('base64') }
     });
-    parts.push({ text: "Hãy nghe đoạn ghi âm trên và trả lời người dùng." });
+    parts.push({ text: 'Hãy nghe đoạn ghi âm trên và trả lời người dùng.' });
   } else if (textPrompt) {
-    parts.push({ text: `Người dùng hỏi: ${textPrompt}` });
+    parts.push({ text: `Người dùng nói: ${textPrompt}` });
   }
 
-const models = [
-  'gemini-3.5-flash-lite',
-  'gemini-3.8-flash',
-  'gemini-flash-latest'
-];
+  const models = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-latest'
+  ];
+
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
@@ -65,27 +104,25 @@ const models = [
         body: JSON.stringify({ contents: [{ parts }] })
       });
       const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-if (text) {
-      let cleanReply = text;
-      const cmdMatch = cleanReply.match(/\[CMD:([A-Z0-9_]+(?::[^\]]+)?)\]/);
-      if (cmdMatch) {
-        pendingCommand = cmdMatch[1];
-        cleanReply = cleanReply.replace(cmdMatch[0], '');
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        let cleanReply = text;
+        const cmdMatch = cleanReply.match(/\[CMD:([A-Z0-9_]+(?::[^\]]+)?)\]/);
+        if (cmdMatch) {
+          pendingCommand = cmdMatch[1].trim();
+          cleanReply = cleanReply.replace(cmdMatch[0], '');
+        }
+        return cleanReply.replace(/[*#_`]/g, '').trim();
       }
-      return cleanReply.replace(/[*#_`]/g, '').trim();
-    }
-
-      // Model này không trả về văn bản (quá tải / sai tên model) -> thử model kế tiếp
-      console.warn(`[GEMINI] ${model} khong co ket qua:`, JSON.stringify(data?.error || data).slice(0, 200));
+      console.error(`[GEMINI ${model} ERR]`, JSON.stringify(data));
     } catch (err) {
-      console.error(`[GEMINI] Loi voi ${model}:`, err.message);
+      console.error(`[GEMINI ${model} FETCH ERR]`, err.message);
     }
   }
-  throw new Error('Tat ca model Gemini deu that bai');
+
+  return 'Xin lỗi, hệ thống AI đang bận, bạn thử lại sau vài giây nhé.';
 }
 
-// Chuyển text tiếng Việt thành file MP3 nhẹ cho ESP32 tải về phát
 async function textToMp3File(text) {
   const shortText = text.slice(0, 190);
   const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(shortText)}&tl=vi&client=tw-ob`;
@@ -96,47 +133,61 @@ async function textToMp3File(text) {
   fs.writeFileSync(REPLY_MP3_PATH, buf);
 }
 
-// 1. ESP32 gửi cảm biến định kỳ & nhận lệnh/audio từ Web App
+// Endpoint kiểm tra Render đã thức & sẵn sàng cho ESP32
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
+});
+
+// 1. ESP32 gửi trạng thái định kỳ & nhận lệnh/audio mới
 app.post('/api/telemetry', (req, res) => {
-  deviceState = { ...deviceState, ...req.body, online: true, lastSeen: Date.now() };
+  deviceState = {
+    ...deviceState,
+    ...req.body,
+    online: true,
+    lastSeen: Date.now()
+  };
   io.emit('telemetry', deviceState);
 
   const response = {
     cmd: pendingCommand,
     playAudio: hasNewAudioForEsp
   };
-  pendingCommand = "NONE";
+  pendingCommand = 'NONE';
   hasNewAudioForEsp = false;
   res.json(response);
 });
 
-// 2. ESP32 gửi file ghi âm /voice.wav từ micro INMP441
+// 2. ESP32 gửi file ghi âm WAV từ INMP441
 app.post('/api/voice', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Thiếu file audio' });
     const replyText = await askGemini({ audioBuffer: req.file.buffer });
     await textToMp3File(replyText);
 
-    io.emit('chat', { sender: 'ESP32 Mic', text: '(Đã gửi giọng nói)' });
-    io.emit('chat', { sender: 'AI', text: replyText });
-    res.json({ ok: true, reply: replyText });
+    pushChat('ESP32 Mic', '(Đã nói qua micro hộp nhạc)');
+    pushChat('AI', replyText);
+
+    const cmdToSend = pendingCommand;
+    pendingCommand = 'NONE';
+    res.json({ ok: true, reply: replyText, cmd: cmdToSend });
   } catch (err) {
     console.error('[VOICE ERR]', err);
     res.status(500).json({ ok: false });
   }
 });
 
-// 3. Web App gửi text hoặc giọng nói từ Micro điện thoại -> ESP32 tự nói ra loa
+// 3. Web gửi tin nhắn -> AI trả lời & ESP32 tự phát giọng nói
 app.post('/api/chat', async (req, res) => {
   try {
-    const userText = req.body.text || '';
-    io.emit('chat', { sender: 'Bạn', text: userText });
+    const userText = (req.body.text || '').trim();
+    if (!userText) return res.status(400).json({ ok: false });
 
+    pushChat('Bạn', userText);
     const replyText = await askGemini({ textPrompt: userText });
     await textToMp3File(replyText);
     hasNewAudioForEsp = true;
 
-    io.emit('chat', { sender: 'AI', text: replyText });
+    pushChat('AI', replyText);
     res.json({ ok: true, reply: replyText });
   } catch (err) {
     console.error('[CHAT ERR]', err);
@@ -144,13 +195,13 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// 4. Web App gửi lệnh điều khiển phần cứng (VD: TEST_RING, MODE_1, MODE_2)
+// 4. Web gửi lệnh điều khiển trực tiếp
 app.post('/api/command', (req, res) => {
-  pendingCommand = req.body.cmd || "NONE";
+  pendingCommand = (req.body.cmd || 'NONE').trim();
   res.json({ ok: true, cmd: pendingCommand });
 });
 
-// 5. ESP32 tải file MP3 câu trả lời về thẻ SD
+// 5. ESP32 tải file MP3 giọng nói AI
 app.get('/api/reply.mp3', (req, res) => {
   if (!fs.existsSync(REPLY_MP3_PATH)) return res.status(404).end();
   res.sendFile(REPLY_MP3_PATH);

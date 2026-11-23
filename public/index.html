@@ -1,93 +1,399 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hộp Nhạc AI & IoT</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MusicBox AI & IoT</title>
   <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-    .card { background: #1e293b; padding: 14px; border-radius: 12px; text-align: center; }
-    .val { font-size: 24px; font-weight: bold; color: #38bdf8; }
-    .chat-box { background: #1e293b; height: 240px; overflow-y: auto; padding: 12px; border-radius: 12px; margin-bottom: 10px; }
-    .msg { margin: 6px 0; padding: 8px 10px; border-radius: 8px; background: #334155; font-size: 14px; }
-    .msg.ai { background: #0369a1; }
-    .row { display: flex; gap: 8px; }
-    input { flex: 1; padding: 10px; border-radius: 8px; border: none; background: #334155; color: #fff; }
-    button { padding: 10px 14px; border: none; border-radius: 8px; background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; }
-    .btn-mic { background: #e11d48; }
-    .controls { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    :root {
+      --bg: #0b1120;
+      --surface: #111827;
+      --surface-2: #1e293b;
+      --border: #26334a;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #3b82f6;
+      --accent-2: #06b6d4;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Header */
+    header {
+      background: rgba(17, 24, 39, 0.92);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+    .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px var(--err); }
+    .brand-dot.online { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+
+    .tabs { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
+    .tab-btn {
+      border: none; background: transparent; color: var(--muted);
+      padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; transition: .2s;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+
+    .status-group { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface-2); border: 1px solid var(--border);
+      padding: 5px 11px; border-radius: 999px; font-weight: 600;
+    }
+    .bat-bar { width: 22px; height: 11px; border: 1.5px solid #cbd5e1; border-radius: 3px; padding: 1px; position: relative; }
+    .bat-bar::after { content: ''; position: absolute; right: -4px; top: 2px; width: 2px; height: 5px; background: #cbd5e1; border-radius: 0 1px 1px 0; }
+    .bat-fill { height: 100%; background: var(--ok); border-radius: 1px; transition: width .3s; }
+
+    /* Views */
+    main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .view { display: none; flex: 1; height: 100%; overflow: hidden; }
+    .view.active { display: flex; flex-direction: column; }
+
+    /* Chat View */
+    .chat-wrap {
+      flex: 1; max-width: 900px; width: 100%; margin: 0 auto;
+      display: flex; flex-direction: column; height: 100%; padding: 12px 16px 14px;
+    }
+    .chat-box {
+      flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+      padding: 8px 4px 16px;
+    }
+    .msg { max-width: 80%; padding: 11px 15px; border-radius: 16px; line-height: 1.5; font-size: 14.5px; position: relative; word-wrap: break-word; }
+    .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff; border-bottom-right-radius: 4px; }
+    .msg.ai { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
+    .msg-meta { font-size: 11px; opacity: .7; margin-bottom: 4px; font-weight: 600; }
+
+    .quick-cmds { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+    .chip {
+      white-space: nowrap; background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 12px; border-radius: 999px; font-size: 12.5px;
+      cursor: pointer; transition: .2s;
+    }
+    .chip:hover { border-color: var(--accent); background: var(--surface-2); }
+
+    .input-bar {
+      display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border);
+      padding: 8px; border-radius: 14px; align-items: center;
+    }
+    .input-bar input {
+      flex: 1; background: transparent; border: none; color: var(--text);
+      font-size: 14.5px; padding: 6px 8px; outline: none;
+    }
+    .btn {
+      border: none; border-radius: 10px; padding: 9px 15px; font-weight: 600;
+      cursor: pointer; font-size: 13.5px; transition: .2s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-mic { background: #dc2626; color: #fff; }
+    .btn-mic.listening { background: var(--warn); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .6; } }
+
+    /* Sensors View */
+    .sensors-wrap {
+      flex: 1; overflow-y: auto; max-width: 1120px; width: 100%; margin: 0 auto;
+      padding: 18px 16px 28px; display: flex; flex-direction: column; gap: 16px;
+    }
+    .top-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px;
+    }
+    .card-title { font-size: 12.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; font-weight: 700; }
+    .clock-val { font-size: 36px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; font-variant-numeric: tabular-nums; }
+    .ring-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .ring-row select {
+      flex: 1; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13.5px;
+    }
+    .ring-badge { font-size: 20px; font-weight: 700; color: #fbbf24; }
+
+    /* Gauges */
+    .gauge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .gauge-card { display: flex; flex-direction: column; align-items: center; text-align: center; }
+    .gauge-svg { width: 170px; height: 105px; }
+    .gauge-bg { fill: none; stroke: #1e293b; stroke-width: 14; stroke-linecap: round; }
+    .gauge-arc { fill: none; stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .5s ease; }
+    .gauge-val { font-size: 24px; font-weight: 800; margin-top: -22px; }
+    .gauge-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .chart-card { height: 310px; display: flex; flex-direction: column; }
+    .chart-holder { flex: 1; position: relative; min-height: 220px; }
   </style>
 </head>
 <body>
-  <h3>Hộp Nhạc AI & IoT Dashboard</h3>
-  <div class="grid">
-    <div class="card">Nhiệt độ<div class="val" id="temp">--°C</div></div>
-    <div class="card">Độ ẩm<div class="val" id="hum">--%</div></div>
-    <div class="card">Ánh sáng<div class="val" id="light">--%</div></div>
-    <div class="card">Pin 18650<div class="val" id="bat">--%</div></div>
-  </div>
+  <header>
+    <div class="brand">
+      <span id="espDot" class="brand-dot"></span>
+      <span>MusicBox AI</span>
+    </div>
 
-  <div class="chat-box" id="chat"></div>
-  <div class="row">
-    <input id="txt" placeholder="Nhắn cho trợ lý AI (ESP32 sẽ nói)..." />
-    <button onclick="sendText()">Gửi</button>
-    <button class="btn-mic" onclick="startMic()">Mic</button>
-  </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('chat', this)">Trò chuyện AI</button>
+      <button class="tab-btn" onclick="switchTab('sensors', this)">Cảm biến & Đồng hồ</button>
+    </div>
 
-  <div class="controls">
-    <button onclick="sendCmd('TEST_RING')">Thử chuông</button>
-    <button onclick="sendCmd('MODE_1')">Về Mode 1 (SD)</button>
-    <button onclick="sendCmd('MODE_2')">Về Mode 2 (Loa BT)</button>
-  </div>
+    <div class="status-group">
+      <div class="pill" id="espStatusText">ESP32: Offline</div>
+      <div class="pill" title="Pin 18650">
+        <div class="bat-bar"><div id="batFill" class="bat-fill" style="width:0%"></div></div>
+        <span id="batText">--%</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- VIEW 1: CHAT AI -->
+    <section id="view-chat" class="view active">
+      <div class="chat-wrap">
+        <div id="chatBox" class="chat-box">
+          <div class="msg ai">
+            <div class="msg-meta">Trợ lý AI</div>
+            Chào bạn! Nhắn hoặc nói để trò chuyện, mở nhạc thẻ SD theo tên bài, bật loa Bluetooth, chọn chuông hoặc quay về Menu chính.
+          </div>
+        </div>
+
+        <div class="quick-cmds">
+          <button class="chip" onclick="sendCmd('MENU')">Về Menu chính</button>
+          <button class="chip" onclick="sendCmd('MODE_1')">Mở nhạc SD (Mode 1)</button>
+          <button class="chip" onclick="sendCmd('MODE_2')">Loa BT (Mode 2)</button>
+          <button class="chip" onclick="sendCmd('MODE_3_PLAY')">Kết nối loa ngoài (Mode 3)</button>
+          <button class="chip" onclick="sendCmd('MODE_5:Mac dinh')">Đồng hồ ATmega (Mode 5)</button>
+          <button class="chip" onclick="sendCmd('TEST_RING')">Thử chuông</button>
+        </div>
+
+        <div class="input-bar">
+          <input id="chatInput" type="text" placeholder="Nhắn cho trợ lý AI (VD: Mở bài mùa xuân, Về menu chính)..." onkeydown="if(event.key==='Enter') sendChat()" />
+          <button class="btn btn-primary" onclick="sendChat()">Gửi</button>
+          <button id="micBtn" class="btn btn-mic" onclick="startVoice()">Mic</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: CẢM BIẾN & ĐỒNG HỒ (ATmega328P) -->
+    <section id="view-sensors" class="view">
+      <div class="sensors-wrap">
+        <div class="top-cards">
+          <div class="card">
+            <div class="card-title">Thời gian thực (DS1307 từ ATmega328P)</div>
+            <div id="ds1307Time" class="clock-val">--:--:--</div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Nhạc chuông hiện tại (ATmega328P)</div>
+            <div id="ringtoneName" class="ring-badge">Chưa có dữ liệu</div>
+            <div class="ring-row">
+              <select id="ringSelect">
+                <option value="Chuong 1">Chuông 1 (Cơ bản)</option>
+                <option value="Chuong 2">Chuông 2 (Nhẹ nhàng)</option>
+                <option value="Chuong 3">Chuông 3 (Sôi động)</option>
+                <option value="Mac dinh">Mặc định</option>
+              </select>
+              <button class="btn btn-primary" onclick="applyRingtone()">Chọn chuông</button>
+              <button class="btn" style="background:#334155;color:#fff" onclick="sendCmd('TEST_RING')">Thử</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="gauge-grid">
+          <div class="card gauge-card">
+            <div class="card-title">Nhiệt độ</div>
+            <svg class="gauge-svg" viewBox="0 0 200 115">
+              <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+              <path id="arcTemp" class="gauge-arc" stroke="#f97316" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
+            </svg>
+            <div id="valTemp" class="gauge-val">-- °C</div>
+            <div class="gauge-sub">Thang đo 0 – 50°C</div>
+          </div>
+
+          <div class="card gauge-card">
+            <div class="card-title">Độ ẩm</div>
+            <svg class="gauge-svg" viewBox="0 0 200 115">
+              <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+              <path id="arcHum" class="gauge-arc" stroke="#06b6d4" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
+            </svg>
+            <div id="valHum" class="gauge-val">-- %</div>
+            <div class="gauge-sub">Thang đo 0 – 100%</div>
+          </div>
+
+          <div class="card gauge-card">
+            <div class="card-title">Ánh sáng (LDR)</div>
+            <svg class="gauge-svg" viewBox="0 0 200 115">
+              <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+              <path id="arcLight" class="gauge-arc" stroke="#facc15" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
+            </svg>
+            <div id="valLight" class="gauge-val">-- %</div>
+            <div class="gauge-sub">Thang đo 0 – 100%</div>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="card-title">Đồ thị 3 cảm biến theo thời gian thực</div>
+          <div class="chart-holder"><canvas id="sensorChart"></canvas></div>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <script>
     const socket = io();
-    const chat = document.getElementById('chat');
+    const ARC_LEN = 251.2;
 
-    socket.on('telemetry', d => {
-      document.getElementById('temp').innerText = d.temp + '°C';
-      document.getElementById('hum').innerText = d.hum + '%';
-      document.getElementById('light').innerText = d.light + '%';
-      document.getElementById('bat').innerText = d.bat >= 0 ? (d.bat + '%') : 'USB';
-    });
+    function switchTab(tab, btn) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('view-' + tab).classList.add('active');
+      if (tab === 'sensors') sensorChart.resize();
+    }
 
-    socket.on('chat', m => {
+    function appendMsg(msg) {
+      const box = document.getElementById('chatBox');
+      const isUser = msg.sender === 'Bạn' || msg.sender === 'ESP32 Mic';
       const div = document.createElement('div');
-      div.className = 'msg' + (m.sender === 'AI' ? ' ai' : '');
-      div.innerText = `${m.sender}: ${m.text}`;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
+      div.className = 'msg ' + (isUser ? 'user' : 'ai');
+      div.innerHTML = `<div class="msg-meta">${msg.sender} • ${msg.time || ''}</div>${escapeHtml(msg.text)}`;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function setGauge(id, val, maxVal) {
+      const pct = Math.max(0, Math.min(1, Number(val || 0) / maxVal));
+      document.getElementById(id).style.strokeDashoffset = (ARC_LEN * (1 - pct)).toFixed(1);
+    }
+
+    // Chart.js setup
+    const ctx = document.getElementById('sensorChart').getContext('2d');
+    const sensorChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Nhiệt độ (°C)', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.12)', tension: 0.35 },
+          { label: 'Độ ẩm (%)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.12)', tension: 0.35 },
+          { label: 'Ánh sáng (%)', data: [], borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.12)', tension: 0.35 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+          y: { min: 0, max: 100, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+        },
+        plugins: { legend: { labels: { color: '#e2e8f0' } } }
+      }
     });
 
-    async function sendText() {
-      const inp = document.getElementById('txt');
-      if (!inp.value.trim()) return;
+    function updateTelemetry(d) {
+      const dot = document.getElementById('espDot');
+      const statusTxt = document.getElementById('espStatusText');
+      dot.className = 'brand-dot' + (d.online ? ' online' : '');
+      statusTxt.textContent = d.online ? `ESP32: Mode ${d.mode || 4}` : 'ESP32: Offline';
+
+      // Battery header
+      const batFill = document.getElementById('batFill');
+      const batText = document.getElementById('batText');
+      if (d.usbPower) {
+        batFill.style.width = '100%';
+        batFill.style.background = '#38bdf8';
+        batText.textContent = d.charging ? 'Sạc USB' : 'USB';
+      } else {
+        const pct = Math.max(0, Math.min(100, Number(d.bat || 0)));
+        batFill.style.width = pct + '%';
+        batFill.style.background = pct < 20 ? '#ef4444' : (pct < 50 ? '#f59e0b' : '#22c55e');
+        batText.textContent = pct + '%';
+      }
+
+      // Sensors tab
+      document.getElementById('ds1307Time').textContent = d.timeStr || '--:--:--';
+      document.getElementById('ringtoneName').textContent = d.ringtone || 'Mac dinh';
+
+      const t = Number(d.temp || 0);
+      const h = Number(d.hum || 0);
+      const l = Number(d.light || 0);
+      document.getElementById('valTemp').textContent = t.toFixed(1) + ' °C';
+      document.getElementById('valHum').textContent = h.toFixed(0) + ' %';
+      document.getElementById('valLight').textContent = l.toFixed(0) + ' %';
+      setGauge('arcTemp', t, 50);
+      setGauge('arcHum', h, 100);
+      setGauge('arcLight', l, 100);
+
+      // Push chart point
+      const label = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      sensorChart.data.labels.push(label);
+      sensorChart.data.datasets[0].data.push(t);
+      sensorChart.data.datasets[1].data.push(h);
+      sensorChart.data.datasets[2].data.push(l);
+      if (sensorChart.data.labels.length > 20) {
+        sensorChart.data.labels.shift();
+        sensorChart.data.datasets.forEach(ds => ds.data.shift());
+      }
+      sensorChart.update('none');
+    }
+
+    socket.on('init', ({ deviceState, chatHistory }) => {
+      updateTelemetry(deviceState);
+      chatHistory.forEach(appendMsg);
+    });
+    socket.on('telemetry', updateTelemetry);
+    socket.on('chat', appendMsg);
+
+    async function sendChat() {
+      const inp = document.getElementById('chatInput');
       const text = inp.value.trim();
+      if (!text) return;
       inp.value = '';
       await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text })
       });
     }
 
     async function sendCmd(cmd) {
       await fetch('/api/command', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cmd })
       });
     }
 
-    // Dùng Micro điện thoại / laptop qua Web Speech API (tiếng Việt)
-    function startMic() {
+    function applyRingtone() {
+      const r = document.getElementById('ringSelect').value;
+      sendCmd('MODE_5:' + r);
+    }
+
+    function startVoice() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return alert('Trình duyệt không hỗ trợ Mic!');
+      if (!SR) return alert('Trình duyệt không hỗ trợ nhận diện giọng nói.');
       const rec = new SR();
       rec.lang = 'vi-VN';
-      rec.onresult = e => {
-        document.getElementById('txt').value = e.results[0][0].transcript;
-        sendText();
+      const btn = document.getElementById('micBtn');
+      btn.classList.add('listening');
+      btn.textContent = 'Đang nghe...';
+      rec.onresult = (e) => {
+        document.getElementById('chatInput').value = e.results[0][0].transcript;
+        sendChat();
+      };
+      rec.onend = () => {
+        btn.classList.remove('listening');
+        btn.textContent = 'Mic';
       };
       rec.start();
     }
