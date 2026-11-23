@@ -40,7 +40,6 @@ let deviceState = {
   lastSeen: 0
 };
 
-// Cache phien am Romaji cho tung ten file goc de khong ton quota Gemini khi dong bo lai
 const romajiCache = new Map();
 
 let chatHistory = [];
@@ -69,23 +68,36 @@ io.on('connection', (socket) => {
   socket.emit('init', { deviceState, chatHistory });
 });
 
-async function callGeminiRaw(parts) {
+async function callGemini(contents, systemInstructionText = null, temperature = 0.85) {
   const models = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.8-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
     'gemini-flash-latest'
   ];
 
   for (const model of models) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+      const payload = {
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 320
+        }
+      };
+      if (systemInstructionText) {
+        payload.systemInstruction = {
+          parts: [{ text: systemInstructionText }]
+        };
+      }
+
       const res = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-goog-api-key': GEMINI_KEY
         },
-        body: JSON.stringify({ contents: [{ parts }] })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -98,12 +110,11 @@ async function callGeminiRaw(parts) {
   return null;
 }
 
-// Lam sach ten file ASCII co ban
 function basicCleanAscii(name) {
   let s = String(name || '')
     .replace(/\.mp3$/i, '')
     .replace(/\s*-\s*YouTube$/i, '')
-    .replace(/[\(\[]?(Official\s+)?(Music\s+)?(Lyric\s+)?(Animation\s+)?(Video\vert{}MV)[\)\]]?/gi, '')
+    .replace(/[\(\[]?(Official\s+)?(Music\s+)?(Lyric\s+)?(Animation\s+)?(Video|MV)[\)\]]?/gi, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
@@ -114,7 +125,6 @@ function basicCleanAscii(name) {
   return s || 'Track';
 }
 
-// Tu dong nho Gemini phien am cac bai co chu Nhat/Han/Trung sang Romaji/ASCII cho OLED
 async function buildCleanDisplayNames(rawList) {
   const needTranslate = [];
   rawList.forEach((raw, idx) => {
@@ -129,11 +139,10 @@ async function buildCleanDisplayNames(rawList) {
     const promptLines = needTranslate.map((item, i) => `${i}|${item.raw}`).join('\n');
     const prompt =
       `Convert these song filenames (many contain Japanese Kanji/Kana) into short, clean ASCII Romaji/English display titles for a small OLED screen (max 28 chars, remove "- YouTube", "Official Music Video", keep artist + title).\n` +
-      `Return ONLY lines in exact format: INDEX|CLEAN_ASCII_TITLE (only ASCII 32-126, no markdown, no explanations).\n` +
-      `Examples: YOASOBIアイドル -> YOASOBI - Idol ; YOASOBI怪物 -> YOASOBI - Kaibutsu ; 恋愛脳 - ナナヲアカリ -> Renai Nou - Nanawoakari\n\n` +
+      `Return ONLY lines in exact format: INDEX|CLEAN_ASCII_TITLE (only ASCII 32-126, no markdown, no explanations).\n\n` +
       promptLines;
 
-    const result = await callGeminiRaw([{ text: prompt }]);
+    const result = await callGemini([{ role: 'user', parts: [{ text: prompt }] }], null, 0.2);
     if (result) {
       result.split('\n').forEach((line) => {
         const sep = line.indexOf('|');
@@ -168,44 +177,56 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
       }).join(' | ')
     : '(Chưa nhận được danh sách từ ESP32)';
 
-  const systemContext =
-    `Bạn là trợ lý ảo cực kỳ dí dỏm, hài hước, lầy lội nhẹ nhàng và thân thiện như một người bạn thân của Vang trong Hộp Nhạc IoT.\n` +
-    `Trạng thái mạch: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, Ánh sáng ${deviceState.light}%, ` +
-    `Pin ${deviceState.usbPower ? 'đang cắm USB' : deviceState.bat + '%'}, Giờ DS1307 ${deviceState.timeStr}, ` +
-    `Nhạc chuông ${deviceState.ringtone}, Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Có') : 'Không'}.\n` +
-    `TOÀN BỘ ${deviceState.songList.length} BÀI NHẠC TRONG THẺ SD (gồm cả tiếng Anh, tiếng Việt và tiếng Nhật): ${numberedSongs}.\n` +
-    `QUY TẮC:\n` +
-    `- Tính cách dí dỏm, tự nhiên, xưng hô bạn bè thân mật ("tui/bạn" hoặc "mình/bồ"), tránh cứng nhắc kiểu robot ("Dạ em... ạ").\n` +
-    `- SONG NGỮ: Nếu người dùng hỏi hoặc nói bằng tiếng Anh, HÃY TRẢ LỜI HOÀN TOÀN BẰNG TIẾNG ANH tự nhiên, hài hước và gắn thêm thẻ [LANG:en] ở đầu câu trả lời. Nếu người dùng nói tiếng Việt, trả lời bằng tiếng Việt.\n` +
-    `- Trả lời ngắn gọn (tối đa 2 câu, không dùng markdown * # _ \`) để đọc mượt ra loa. Nếu được hỏi liệt kê danh sách nhạc thì báo tổng số bài (${deviceState.songList.length} bài) và kể vài bài nổi bật.\n` +
-    `- Bạn hiểu tất cả tên bài tiếng Nhật (Kanji/Kana), Romaji, tiếng Anh và tiếng Việt (VD: Idol = アイドル, Kaibutsu = 怪物, Renai Nou = 恋愛脳, Kami no Manimani = 神のまにまに, Hyururirappa = ひゅるりらっぱ).\n` +
-    `- Khi người dùng yêu cầu mở nhạc / đổi bài / dừng nhạc, MẶC ĐỊNH phát ngay trong chế độ AI (KHÔNG chuyển sang MODE_1 trừ khi người dùng nói rõ "chuyển chế độ 1").\n` +
-    `- Khi có lệnh điều khiển, LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu (không giải thích thẻ):\n` +
-    `  * Mở đúng 1 bài trong thẻ SD (BẮT BUỘC dùng đúng số thứ tự 1..${deviceState.songList.length} nếu khớp, VD bài số 21 -> [CMD:AI_PLAY:21]): [CMD:AI_PLAY:so_thu_tu]\n` +
-    `  * Mở nhạc ngẫu nhiên / bất kỳ: [CMD:AI_PLAY]\n` +
-    `  * Đổi bài khác / bài tiếp theo: [CMD:AI_NEXT]\n` +
-    `  * Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP]\n` +
-    `  * Phát tiếp nhạc đang tạm dừng: [CMD:AI_RESUME]\n` +
-    `  * Về menu chính / thoát chế độ AI: [CMD:MENU]\n` +
-    `  * Chuyển hẳn sang chế độ 1 (SD thủ công): [CMD:MODE_1]\n` +
-    `  * Bật chế độ 2 Loa Bluetooth (nhắc người dùng mở Bluetooth kết nối ESP32_AI_Speaker): [CMD:MODE_2]\n` +
-    `  * Bật chế độ 3 tìm & tự kết nối loa/tai nghe Bluetooth ngoài rồi phát nhạc: [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:so_thu_tu])\n` +
-    `  * Bật chế độ 4 đồng hồ/báo thức & chọn nhạc chuông: [CMD:MODE_4:so_thu_tu] (hoặc [CMD:MODE_4])\n` +
-    `  * Thử chuông báo thức ngay: [CMD:TEST_RING]`;
+  const nowVn = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-  const parts = [{ text: systemContext }];
+  const systemContext =
+    `Bạn là trợ lý AI thông minh, nhạy bén, giàu kiến thức và có cá tính dí dỏm thân thiện trong chiếc Hộp Nhạc IoT.\n` +
+    `Thời gian thực hệ thống: ${nowVn}.\n` +
+    `Trạng thái phần cứng hiện tại:\n` +
+    `- Nhiệt độ: ${deviceState.temp}°C | Độ ẩm: ${deviceState.hum}% | Ánh sáng: ${deviceState.light}%\n` +
+    `- Nguồn: ${deviceState.usbPower ? 'Đang cắm USB' : deviceState.bat + '% (' + deviceState.batV + 'V)'}\n` +
+    `- Đồng hồ: ${deviceState.timeStr} | Báo thức: ${deviceState.alarmStr} (${deviceState.alarmOn ? 'Đang bật' : 'Tắt'}) | Nhạc chuông: ${deviceState.ringtone}\n` +
+    `- Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Đang phát') : 'Không'}\n` +
+    `- Kho nhạc SD (${deviceState.songList.length} bài): ${numberedSongs}\n\n` +
+    `CÁCH TRÒ CHUYỆN & TRẢ LỜI:\n` +
+    `1. Bạn là một người bạn thông minh thực thụ: có thể trò chuyện tự nhiên, tâm sự, giải thích kiến thức khoa học/đời sống, gợi ý nhạc theo tâm trạng, nhận xét thời tiết trong phòng từ cảm biến, kể chuyện vui hoặc tranh luận nhẹ nhàng.\n` +
+    `2. KHÔNG tự ý mở nhạc hay gắn thẻ [CMD:...] nếu người dùng chỉ đang hỏi thăm, trò chuyện, hỏi kiến thức, hoặc hỏi thông tin cảm biến/giờ giấc!\n` +
+    `3. Trả lời tự nhiên, súc tích, có hồn (2–4 câu, tối đa ~320 ký tự), KHÔNG dùng ký tự markdown (*, #, _, \`) để hệ thống đọc mượt ra loa.\n` +
+    `4. SONG NGỮ: Nếu người dùng nói/nhắn bằng tiếng Anh, trả lời hoàn toàn bằng tiếng Anh tự nhiên và thêm [LANG:en] ở đầu. Nếu tiếng Việt, trả lời tiếng Việt.\n\n` +
+    `QUY TẮC LỆNH ĐIỀU KHIỂN (chỉ gắn ĐÚNG 1 thẻ ở cuối câu KHI người dùng thật sự yêu cầu hành động):\n` +
+    `- Mở 1 bài cụ thể trong AI (dùng đúng số thứ tự 1..${deviceState.songList.length}): [CMD:AI_PLAY:so_thu_tu]\n` +
+    `- Mở nhạc ngẫu nhiên trong AI: [CMD:AI_PLAY]\n` +
+    `- Đổi bài tiếp theo trong AI: [CMD:AI_NEXT]\n` +
+    `- Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP]\n` +
+    `- Phát tiếp nhạc đang tạm dừng: [CMD:AI_RESUME]\n` +
+    `- Đặt báo thức trên hộp nhạc (HH:MM dạng 24h, trạng thái 1=bật, 0=tắt): [CMD:SET_ALARM:HH:MM:1] hoặc [CMD:SET_ALARM:00:00:0]\n` +
+    `- Chỉnh giờ đồng hồ trên web/hộp nhạc (HH:MM dạng 24h): [CMD:SET_TIME:HH:MM]\n` +
+    `- Đổi nhạc chuông báo thức (không thoát AI): [CMD:SET_RING:so_thu_tu]\n` +
+    `- Nghe thử chuông báo thức ngay: [CMD:TEST_RING]\n` +
+    `- Tắt chuông báo thức đang kêu: [CMD:STOP_ALARM]\n` +
+    `- Chuyển chế độ phần cứng (CHỈ dùng khi người dùng nói rõ muốn chuyển chế độ): [CMD:MENU], [CMD:MODE_1], [CMD:MODE_2], [CMD:MODE_3_PLAY], [CMD:MODE_4]`;
+
+  // Dua toi da 10 luot hoi thoai gan nhat vao lich su de AI nho ngu canh
+  const recentHistory = chatHistory.slice(-10).map((m) => ({
+    role: m.sender === 'AI' ? 'model' : 'user',
+    parts: [{ text: m.text }]
+  }));
+
+  const currentParts = [];
   if (audioBuffer) {
-    parts.push({
+    currentParts.push({
       inline_data: { mime_type: 'audio/wav', data: audioBuffer.toString('base64') }
     });
-    parts.push({ text: 'Nghe đoạn ghi âm trên (có thể bằng tiếng Việt hoặc tiếng Anh) và trả lời tự nhiên.' });
+    currentParts.push({ text: 'Hãy nghe kỹ đoạn âm thanh trên (tiếng Việt hoặc tiếng Anh) và phản hồi thật tự nhiên, thông minh theo mạch hội thoại.' });
   } else if (textPrompt) {
-    parts.push({ text: `Người dùng nói: ${textPrompt}` });
+    currentParts.push({ text: textPrompt });
   }
 
-  const rawText = await callGeminiRaw(parts);
+  const contents = [...recentHistory, { role: 'user', parts: currentParts }];
+  const rawText = await callGemini(contents, systemContext, 0.85);
+
   if (!rawText) {
-    return { text: 'Ui não AI hơi lag xíu, bồ gọi lại sau vài giây nha!', lang: 'vi' };
+    return { text: 'Mạng tới Gemini hơi chập chờn xíu, bồ nói lại giúp mình nha!', lang: 'vi' };
   }
 
   let cleanReply = rawText;
@@ -224,7 +245,6 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
 
   cleanReply = cleanReply.replace(/[*#_`]/g, '').trim();
 
-  // Tu dong nhan dien tieng Anh du phong neu Gemini quen gan [LANG:en]
   const hasViDiacritics = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(cleanReply);
   if (!hasViDiacritics && /[a-zA-Z]{3,}/.test(cleanReply)) {
     lang = 'en';
@@ -233,22 +253,63 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
   return { text: cleanReply, lang };
 }
 
+// Chia van ban thanh tung doan <= 180 ky tu de Google TTS doc tron ven khong bi cat giua cau
+function splitTtsChunks(text, maxLen = 180) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return [];
+  const sentences = clean.split(/(?<=[.!?])\s+/);
+  const chunks = [];
+  let current = '';
+
+  for (const s of sentences) {
+    if ((current + ' ' + s).trim().length <= maxLen) {
+      current = (current + ' ' + s).trim();
+    } else {
+      if (current) chunks.push(current);
+      if (s.length <= maxLen) {
+        current = s;
+      } else {
+        const words = s.split(' ');
+        current = '';
+        for (const w of words) {
+          if ((current + ' ' + w).trim().length <= maxLen) {
+            current = (current + ' ' + w).trim();
+          } else {
+            if (current) chunks.push(current);
+            current = w;
+          }
+        }
+      }
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.slice(0, 3);
+}
+
 async function textToMp3File(text, lang = 'vi') {
-  const shortText = text.slice(0, 195);
   const tl = lang === 'en' ? 'en' : 'vi';
-  const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(shortText)}&tl=${tl}&client=tw-ob`;
-  const res = await fetch(ttsUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0' }
-  });
-  const buf = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(REPLY_MP3_PATH, buf);
+  const chunks = splitTtsChunks(text, 180);
+  if (chunks.length === 0) return;
+
+  const buffers = [];
+  for (const chunk of chunks) {
+    const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tl}&client=tw-ob`;
+    const res = await fetch(ttsUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (res.ok) {
+      buffers.push(Buffer.from(await res.arrayBuffer()));
+    }
+  }
+  if (buffers.length > 0) {
+    fs.writeFileSync(REPLY_MP3_PATH, Buffer.concat(buffers));
+  }
 }
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
 });
 
-// Nhan danh sach full bai hat dang text/plain (moi dong 1 ten file) -> tra ve ten Romaji/ASCII sach cho OLED
 app.post('/api/songs', async (req, res) => {
   try {
     let rawList = [];
@@ -314,8 +375,8 @@ app.post('/api/chat', async (req, res) => {
     const userText = (req.body.text || '').trim();
     if (!userText) return res.status(400).json({ ok: false });
 
-    pushChat('Bạn', userText);
     const { text: replyText, lang } = await askGemini({ textPrompt: userText });
+    pushChat('Bạn', userText);
     await textToMp3File(replyText, lang);
     hasNewAudioForEsp = true;
 

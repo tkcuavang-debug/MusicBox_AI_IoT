@@ -8,42 +8,61 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
-      --bg: #0b1120;
-      --surface: #111827;
-      --surface-2: #1e293b;
-      --border: #26334a;
-      --text: #f1f5f9;
+      --bg: #070d1a;
+      --surface: rgba(15, 23, 42, 0.88);
+      --surface-2: rgba(30, 41, 59, 0.85);
+      --border: rgba(148, 163, 184, 0.16);
+      --text: #f8fafc;
       --muted: #94a3b8;
       --accent: #3b82f6;
+      --accent-2: #06b6d4;
       --ok: #22c55e;
       --warn: #f59e0b;
       --err: #ef4444;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-    body { background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    body {
+      background:
+        radial-gradient(circle at 12% 10%, rgba(59, 130, 246, 0.14), transparent 36%),
+        radial-gradient(circle at 88% 85%, rgba(6, 182, 212, 0.12), transparent 38%),
+        var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
     header {
-      background: rgba(17, 24, 39, 0.94);
+      background: rgba(10, 17, 32, 0.9);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
-      padding: 10px 18px;
+      padding: 10px 20px;
       display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
     }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
-    .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 8px var(--err); }
-    .brand-dot.online { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: 0.2px; }
+    .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 10px var(--err); transition: .3s; }
+    .brand-dot.online { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
 
-    .tabs { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
+    .tabs {
+      display: flex; gap: 6px; background: rgba(15, 23, 42, 0.9);
+      padding: 4px; border-radius: 12px; border: 1px solid var(--border);
+    }
     .tab-btn {
       border: none; background: transparent; color: var(--muted);
-      padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600; transition: .2s;
+      padding: 7px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: .2s;
     }
-    .tab-btn.active { background: var(--accent); color: #fff; }
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--accent), #2563eb);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
 
-    .status-group { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+    .status-group { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
     .pill {
       display: flex; align-items: center; gap: 6px;
       background: var(--surface-2); border: 1px solid var(--border);
-      padding: 5px 11px; border-radius: 999px; font-weight: 600;
+      padding: 5px 12px; border-radius: 999px; font-weight: 600;
     }
     .bat-bar { width: 22px; height: 11px; border: 1.5px solid #cbd5e1; border-radius: 3px; padding: 1px; position: relative; }
     .bat-bar::after { content: ''; position: absolute; right: -4px; top: 2px; width: 2px; height: 5px; background: #cbd5e1; border-radius: 0 1px 1px 0; }
@@ -55,61 +74,102 @@
 
     /* Chat View */
     .chat-wrap {
-      flex: 1; max-width: 900px; width: 100%; margin: 0 auto;
-      display: flex; flex-direction: column; height: 100%; padding: 12px 16px 14px;
+      flex: 1; max-width: 920px; width: 100%; margin: 0 auto;
+      display: flex; flex-direction: column; height: 100%; padding: 14px 16px 16px;
     }
-    .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 16px; }
-    .msg { max-width: 80%; padding: 11px 15px; border-radius: 16px; line-height: 1.5; font-size: 14.5px; word-wrap: break-word; }
-    .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff; border-bottom-right-radius: 4px; }
+    .now-playing-bar {
+      display: none;
+      align-items: center; justify-content: space-between; gap: 10px;
+      background: linear-gradient(90deg, rgba(59,130,246,0.16), rgba(6,182,212,0.14));
+      border: 1px solid rgba(59,130,246,0.35);
+      border-radius: 12px; padding: 9px 14px; margin-bottom: 10px; font-size: 13px;
+    }
+    .now-playing-bar.show { display: flex; }
+    .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 14px; }
+    .msg { max-width: 82%; padding: 12px 16px; border-radius: 16px; line-height: 1.55; font-size: 14.5px; word-wrap: break-word; }
+    .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff; border-bottom-right-radius: 4px; box-shadow: 0 4px 14px rgba(2,132,199,0.28); }
     .msg.ai { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
-    .msg-meta { font-size: 11px; opacity: .7; margin-bottom: 4px; font-weight: 600; }
+    .msg-meta { font-size: 11px; opacity: .72; margin-bottom: 4px; font-weight: 600; }
 
-    .quick-cmds { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; }
+    .quick-cmds { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 10px; }
     .chip {
       white-space: nowrap; background: var(--surface); border: 1px solid var(--border);
-      color: var(--text); padding: 6px 12px; border-radius: 999px; font-size: 12.5px; cursor: pointer; transition: .2s;
+      color: var(--text); padding: 6px 13px; border-radius: 999px; font-size: 12.5px; cursor: pointer; transition: .2s;
     }
-    .chip:hover { border-color: var(--accent); background: var(--surface-2); }
+    .chip:hover { border-color: var(--accent); background: var(--surface-2); transform: translateY(-1px); }
 
     .input-bar {
       display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border);
-      padding: 8px; border-radius: 14px; align-items: center;
+      padding: 8px 10px; border-radius: 16px; align-items: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     }
     .input-bar input { flex: 1; background: transparent; border: none; color: var(--text); font-size: 14.5px; padding: 6px 8px; outline: none; }
-    .btn { border: none; border-radius: 10px; padding: 9px 15px; font-weight: 600; cursor: pointer; font-size: 13.5px; transition: .2s; }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { background: #2563eb; }
+
+    .btn {
+      border: none; border-radius: 10px; padding: 8px 14px; font-weight: 600;
+      cursor: pointer; font-size: 13px; transition: .2s; white-space: nowrap;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; }
+    .btn-sec { background: #334155; color: #f1f5f9; }
+    .btn-ok { background: #16a34a; color: #fff; }
+    .btn-warn { background: #d97706; color: #fff; }
+    .btn-danger { background: #dc2626; color: #fff; }
     .btn-mic { background: #dc2626; color: #fff; }
     .btn-mic.listening { background: var(--warn); animation: pulse 1s infinite; }
     @keyframes pulse { 50% { opacity: .6; } }
 
-    /* Sensors View */
+    /* Sensors & Control View */
     .sensors-wrap {
-      flex: 1; overflow-y: auto; max-width: 1120px; width: 100%; margin: 0 auto;
-      padding: 18px 16px 28px; display: flex; flex-direction: column; gap: 16px;
+      flex: 1; overflow-y: auto; max-width: 1180px; width: 100%; margin: 0 auto;
+      padding: 18px 16px 32px; display: flex; flex-direction: column; gap: 16px;
     }
-    .top-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
-    .card-title { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; font-weight: 700; }
-    .clock-val { font-size: 36px; font-weight: 800; letter-spacing: 2px; color: #38bdf8; font-variant-numeric: tabular-nums; }
+    .top-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 18px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+    }
+    .card-title {
+      font-size: 11.5px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .7px; margin-bottom: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .clock-val {
+      font-size: 38px; font-weight: 800; letter-spacing: 2px;
+      background: linear-gradient(90deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      font-variant-numeric: tabular-nums; line-height: 1.1;
+    }
     .alarm-sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
-    .ring-badge { font-size: 19px; font-weight: 700; color: #fbbf24; word-break: break-word; }
-    .ring-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .ring-row select {
-      flex: 1; background: var(--surface-2); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 13.5px;
-    }
+    .ring-badge { font-size: 16.5px; font-weight: 700; color: #fbbf24; word-break: break-word; min-height: 24px; }
 
-    .gauge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-    .gauge-card { display: flex; flex-direction: column; align-items: center; text-align: center; }
-    .gauge-svg { width: 170px; height: 105px; }
+    .ctrl-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+    .ctrl-row input[type="time"],
+    .ctrl-row select {
+      flex: 1; min-width: 120px; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; font-size: 13.5px; outline: none;
+    }
+    .ctrl-row input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+    .toast-msg { font-size: 12px; color: #38bdf8; margin-top: 7px; min-height: 16px; }
+
+    .gauge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+    .gauge-card { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 14px; }
+    .gauge-svg { width: 160px; height: 98px; }
     .gauge-bg { fill: none; stroke: #1e293b; stroke-width: 14; stroke-linecap: round; }
     .gauge-arc { fill: none; stroke-width: 14; stroke-linecap: round; transition: stroke-dashoffset .5s ease; }
-    .gauge-val { font-size: 24px; font-weight: 800; margin-top: -22px; }
-    .gauge-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .gauge-val { font-size: 22px; font-weight: 800; margin-top: -20px; }
+    .gauge-sub { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 
-    .chart-card { height: 310px; display: flex; flex-direction: column; }
-    .chart-holder { flex: 1; position: relative; min-height: 220px; }
+    /* 4 Charts Grid (2x2 on desktop, 1 col on mobile) */
+    .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    @media (max-width: 780px) { .charts-grid { grid-template-columns: 1fr; } }
+    .chart-card { height: 245px; display: flex; flex-direction: column; }
+    .chart-holder { flex: 1; position: relative; min-height: 170px; }
   </style>
 </head>
 <body>
@@ -136,24 +196,33 @@
   <main>
     <section id="view-chat" class="view active">
       <div class="chat-wrap">
+        <div id="nowPlayingBar" class="now-playing-bar">
+          <span id="nowPlayingText">Đang phát: --</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sec" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_NEXT')">Bài tiếp</button>
+            <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_STOP')">Dừng</button>
+          </div>
+        </div>
+
         <div id="chatBox" class="chat-box">
           <div class="msg ai">
             <div class="msg-meta">Trợ lý AI</div>
-            Chào bạn! Bạn có thể nhắn hoặc nói để mở nhạc SD theo đúng tên bài, bật loa Bluetooth, tìm loa ngoài phát nhạc, chọn nhạc chuông báo thức hoặc quay về Menu chính.
+            Chào bồ! Tui sẵn sàng trò chuyện, giải đáp thắc mắc, kiểm tra cảm biến, mở nhạc theo tên bài hoặc đặt báo thức giúp bồ ngay đây.
           </div>
         </div>
 
         <div class="quick-cmds">
-          <button class="chip" onclick="sendCmd('MENU')">Về Menu chính</button>
-          <button class="chip" onclick="sendCmd('MODE_1')">Nhạc SD (Mode 1)</button>
+          <button class="chip" onclick="sendCmd('AI_PLAY')">Phát nhạc (AI)</button>
+          <button class="chip" onclick="sendCmd('AI_NEXT')">Đổi bài</button>
+          <button class="chip" onclick="sendCmd('AI_STOP')">Dừng nhạc</button>
           <button class="chip" onclick="sendCmd('MODE_2')">Loa BT (Mode 2)</button>
-          <button class="chip" onclick="sendCmd('MODE_3_PLAY')">Tìm loa BT ngoài (Mode 3)</button>
-          <button class="chip" onclick="sendCmd('MODE_4')">Đồng hồ ATmega (Mode 4)</button>
+          <button class="chip" onclick="sendCmd('MODE_3_PLAY')">Tai nghe BT (Mode 3)</button>
           <button class="chip" onclick="sendCmd('TEST_RING')">Thử chuông</button>
+          <button class="chip" onclick="sendCmd('MENU')">Về Menu</button>
         </div>
 
         <div class="input-bar">
-          <input id="chatInput" type="text" placeholder="Nhắn cho trợ lý AI (VD: Mở bài..., Kết nối loa Bluetooth, Về menu chính)..." onkeydown="if(event.key==='Enter') sendChat()" />
+          <input id="chatInput" type="text" placeholder="Nhắn gì đó cho AI (hỏi chuyện, mở nhạc, đặt báo thức)..." onkeydown="if(event.key==='Enter') sendChat()" />
           <button class="btn btn-primary" onclick="sendChat()">Gửi</button>
           <button id="micBtn" class="btn btn-mic" onclick="startVoice()">Mic</button>
         </div>
@@ -163,28 +232,52 @@
     <section id="view-sensors" class="view">
       <div class="sensors-wrap">
         <div class="top-cards">
+          <!-- Card 1: Đồng hồ & Chỉnh giờ -->
           <div class="card">
-            <div class="card-title">Thời gian thực (DS1307 từ ATmega328P)</div>
+            <div class="card-title">
+              <span>Đồng hồ & Chỉnh giờ</span>
+              <span id="clockSourceBadge" style="color:#38bdf8">DS1307</span>
+            </div>
             <div id="ds1307Time" class="clock-val">--:--:--</div>
-            <div id="alarmSub" class="alarm-sub">Hẹn giờ: --:-- (Tắt)</div>
+            <div id="alarmSub" class="alarm-sub">Báo thức: --:-- (Tắt)</div>
+
+            <div class="ctrl-row" style="margin-top:12px">
+              <input id="setTimeInput" type="time" value="12:00" />
+              <button class="btn btn-primary" onclick="applyClockTime()">Chỉnh giờ</button>
+              <button class="btn btn-sec" onclick="syncPcClockTime()" title="Lấy giờ hiện tại của thiết bị này">Theo máy</button>
+            </div>
+            <div id="timeToast" class="toast-msg"></div>
           </div>
 
+          <!-- Card 2: Báo thức & Nhạc chuông -->
           <div class="card">
-            <div class="card-title">Nhạc chuông hiện tại (ATmega328P)</div>
-            <div id="ringtoneName" class="ring-badge">Chưa có dữ liệu</div>
-            <div class="ring-row">
+            <div class="card-title">
+              <span>Cài báo thức & Nhạc chuông</span>
+              <span id="alarmStateBadge" style="color:var(--muted)">Tắt</span>
+            </div>
+            <div id="ringtoneName" class="ring-badge">Chưa chọn nhạc chuông</div>
+
+            <div class="ctrl-row">
+              <input id="alarmTimeInput" type="time" value="06:30" />
+              <button id="alarmToggleBtn" class="btn btn-ok" onclick="toggleAlarmAndSave()">Bật & Lưu</button>
+              <button class="btn btn-danger" onclick="disableAlarm()">Tắt</button>
+            </div>
+
+            <div class="ctrl-row">
               <select id="ringSelect">
                 <option value="">(Đang chờ danh sách thẻ SD...)</option>
               </select>
               <button class="btn btn-primary" onclick="applyRingtone()">Chọn chuông</button>
-              <button class="btn" style="background:#334155;color:#fff" onclick="sendCmd('TEST_RING')">Thử</button>
+              <button class="btn btn-sec" onclick="sendCmd('TEST_RING')">Thử</button>
+              <button class="btn btn-warn" onclick="sendCmd('STOP_ALARM')">Dừng kêu</button>
             </div>
+            <div id="alarmToast" class="toast-msg"></div>
           </div>
         </div>
 
         <div class="gauge-grid">
           <div class="card gauge-card">
-            <div class="card-title">Nhiệt độ</div>
+            <div class="card-title" style="justify-content:center">Nhiệt độ</div>
             <svg class="gauge-svg" viewBox="0 0 200 115">
               <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
               <path id="arcTemp" class="gauge-arc" stroke="#f97316" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
@@ -194,7 +287,7 @@
           </div>
 
           <div class="card gauge-card">
-            <div class="card-title">Độ ẩm</div>
+            <div class="card-title" style="justify-content:center">Độ ẩm</div>
             <svg class="gauge-svg" viewBox="0 0 200 115">
               <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
               <path id="arcHum" class="gauge-arc" stroke="#06b6d4" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
@@ -204,7 +297,7 @@
           </div>
 
           <div class="card gauge-card">
-            <div class="card-title">Ánh sáng (LDR)</div>
+            <div class="card-title" style="justify-content:center">Ánh sáng (LDR)</div>
             <svg class="gauge-svg" viewBox="0 0 200 115">
               <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
               <path id="arcLight" class="gauge-arc" stroke="#facc15" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
@@ -214,9 +307,24 @@
           </div>
         </div>
 
-        <div class="card chart-card">
-          <div class="card-title">Đồ thị 3 cảm biến theo thời gian thực</div>
-          <div class="chart-holder"><canvas id="sensorChart"></canvas></div>
+        <!-- 4 Đồ thị riêng biệt -->
+        <div class="charts-grid">
+          <div class="card chart-card">
+            <div class="card-title"><span>1. Đồ thị Nhiệt độ (°C)</span><span id="lblChartTemp" style="color:#f97316">--°C</span></div>
+            <div class="chart-holder"><canvas id="chartTemp"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-title"><span>2. Đồ thị Độ ẩm (%)</span><span id="lblChartHum" style="color:#06b6d4">--%</span></div>
+            <div class="chart-holder"><canvas id="chartHum"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-title"><span>3. Đồ thị Ánh sáng (%)</span><span id="lblChartLight" style="color:#facc15">--%</span></div>
+            <div class="chart-holder"><canvas id="chartLight"></canvas></div>
+          </div>
+          <div class="card chart-card">
+            <div class="card-title"><span>4. Đồ thị Điện áp Pin (V)</span><span id="lblChartBat" style="color:#22c55e">--V</span></div>
+            <div class="chart-holder"><canvas id="chartBat"></canvas></div>
+          </div>
         </div>
       </div>
     </section>
@@ -232,7 +340,12 @@
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('view-' + tab).classList.add('active');
-      if (tab === 'sensors') sensorChart.resize();
+      if (tab === 'sensors') {
+        chartTemp.resize();
+        chartHum.resize();
+        chartLight.resize();
+        chartBat.resize();
+      }
     }
 
     function escapeHtml(s) {
@@ -254,31 +367,68 @@
       document.getElementById(id).style.strokeDashoffset = (ARC_LEN * (1 - pct)).toFixed(1);
     }
 
-    const ctx = document.getElementById('sensorChart').getContext('2d');
-    const sensorChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [
-          { label: 'Nhiệt độ (°C)', data: [], borderColor: '#f97316', backgroundColor: 'rgba(249,115,22,0.12)', tension: 0.35 },
-          { label: 'Độ ẩm (%)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6,182,212,0.12)', tension: 0.35 },
-          { label: 'Ánh sáng (%)', data: [], borderColor: '#facc15', backgroundColor: 'rgba(250,204,21,0.12)', tension: 0.35 }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
-          y: { min: 0, max: 100, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }
+    function makeMiniChart(canvasId, label, color, bg, minY, maxY) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label,
+            data: [],
+            borderColor: color,
+            backgroundColor: bg,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 2,
+            tension: 0.35
+          }]
         },
-        plugins: { legend: { labels: { color: '#e2e8f0' } } }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: { ticks: { color: '#94a3b8', maxTicksLimit: 5, font: { size: 10 } }, grid: { color: 'rgba(148,163,184,0.08)' } },
+            y: { min: minY, max: maxY, ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: 'rgba(148,163,184,0.08)' } }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    const chartTemp  = makeMiniChart('chartTemp',  'Nhiệt độ (°C)', '#f97316', 'rgba(249,115,22,0.16)', 0, 50);
+    const chartHum   = makeMiniChart('chartHum',   'Độ ẩm (%)',     '#06b6d4', 'rgba(6,182,212,0.16)',  0, 100);
+    const chartLight = makeMiniChart('chartLight', 'Ánh sáng (%)',  '#facc15', 'rgba(250,204,21,0.16)', 0, 100);
+    const chartBat   = makeMiniChart('chartBat',   'Pin (V)',       '#22c55e', 'rgba(34,197,94,0.16)',  0, 4.5);
+
+    function pushChartPoint(chart, label, value) {
+      chart.data.labels.push(label);
+      chart.data.datasets[0].data.push(value);
+      if (chart.data.labels.length > 20) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
       }
-    });
+      chart.update('none');
+    }
+
+    function showToast(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+    }
 
     function updateTelemetry(d) {
       document.getElementById('espDot').className = 'brand-dot' + (d.online ? ' online' : '');
       document.getElementById('espStatusText').textContent = d.online ? `ESP32: Mode ${d.mode || 5}` : 'ESP32: Offline';
+
+      const npBar = document.getElementById('nowPlayingBar');
+      if (d.aiPlaying && d.currentSong) {
+        npBar.classList.add('show');
+        document.getElementById('nowPlayingText').textContent = 'Đang phát: ' + d.currentSong;
+      } else {
+        npBar.classList.remove('show');
+      }
 
       const batFill = document.getElementById('batFill');
       const batText = document.getElementById('batText');
@@ -294,44 +444,50 @@
       }
 
       document.getElementById('ds1307Time').textContent = d.timeStr || '--:--:--';
-      document.getElementById('alarmSub').textContent = `Hẹn giờ: ${d.alarmStr || '--:--'} (${d.alarmOn ? 'Đang bật' : 'Tắt'})`;
+      document.getElementById('alarmSub').textContent = `Báo thức: ${d.alarmStr || '--:--'} (${d.alarmOn ? 'Đang bật' : 'Tắt'})`;
+      const badge = document.getElementById('alarmStateBadge');
+      badge.textContent = d.alarmOn ? `BẬT (${d.alarmStr || '--:--'})` : 'TẮT';
+      badge.style.color = d.alarmOn ? '#22c55e' : '#94a3b8';
+
       document.getElementById('ringtoneName').textContent = d.ringtone || 'Chưa chọn';
 
-     const songArr = Array.isArray(d.songList) ? d.songList : [];
-const songsKey = songArr.join('|');
-if (songArr.length > 0 && songsKey !== lastSongsCsv) {
-  lastSongsCsv = songsKey;
-  const sel = document.getElementById('ringSelect');
-  sel.innerHTML = '';
-  songArr.forEach((name, idx) => {
-    const opt = document.createElement('option');
-    opt.value = String(idx + 1);
-    opt.textContent = `${idx + 1}. ${name}`;
-    sel.appendChild(opt);
-  });
-}
+      const songArr = Array.isArray(d.songList) ? d.songList : [];
+      const songsKey = songArr.join('|');
+      if (songArr.length > 0 && songsKey !== lastSongsCsv) {
+        lastSongsCsv = songsKey;
+        const sel = document.getElementById('ringSelect');
+        sel.innerHTML = '';
+        songArr.forEach((name, idx) => {
+          const opt = document.createElement('option');
+          opt.value = String(idx + 1);
+          opt.textContent = `${idx + 1}. ${name}`;
+          sel.appendChild(opt);
+        });
+      }
 
       const t = Number(d.temp || 0);
       const h = Number(d.hum || 0);
       const l = Number(d.light || 0);
+      const bv = Number(d.batV || 0);
+
       document.getElementById('valTemp').textContent = t + ' °C';
       document.getElementById('valHum').textContent = h + ' %';
       document.getElementById('valLight').textContent = l + ' %';
+      document.getElementById('lblChartTemp').textContent = t + ' °C';
+      document.getElementById('lblChartHum').textContent = h + ' %';
+      document.getElementById('lblChartLight').textContent = l + ' %';
+      document.getElementById('lblChartBat').textContent = (d.usbPower || d.bat < 0) ? 'USB' : `${bv.toFixed(2)}V (${d.bat}%)`;
+
       setGauge('arcTemp', t, 50);
       setGauge('arcHum', h, 100);
       setGauge('arcLight', l, 100);
 
       if (d.online) {
         const label = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        sensorChart.data.labels.push(label);
-        sensorChart.data.datasets[0].data.push(t);
-        sensorChart.data.datasets[1].data.push(h);
-        sensorChart.data.datasets[2].data.push(l);
-        if (sensorChart.data.labels.length > 20) {
-          sensorChart.data.labels.shift();
-          sensorChart.data.datasets.forEach(ds => ds.data.shift());
-        }
-        sensorChart.update('none');
+        pushChartPoint(chartTemp,  label, t);
+        pushChartPoint(chartHum,   label, h);
+        pushChartPoint(chartLight, label, l);
+        pushChartPoint(chartBat,   label, bv);
       }
     }
 
@@ -365,7 +521,37 @@ if (songArr.length > 0 && songsKey !== lastSongsCsv) {
     function applyRingtone() {
       const r = document.getElementById('ringSelect').value;
       if (!r) return;
-      sendCmd('MODE_4:' + r);
+      sendCmd('SET_RING:' + r);
+      showToast('alarmToast', 'Đã gửi lệnh đổi nhạc chuông (đồng bộ sang ATmega)!');
+    }
+
+    function toggleAlarmAndSave() {
+      const val = document.getElementById('alarmTimeInput').value;
+      if (!val) return;
+      sendCmd(`SET_ALARM:${val}:1`);
+      showToast('alarmToast', `Đã đặt báo thức ${val} (Bật)!`);
+    }
+
+    function disableAlarm() {
+      const val = document.getElementById('alarmTimeInput').value || '00:00';
+      sendCmd(`SET_ALARM:${val}:0`);
+      showToast('alarmToast', 'Đã tắt báo thức Web!');
+    }
+
+    function applyClockTime() {
+      const val = document.getElementById('setTimeInput').value;
+      if (!val) return;
+      sendCmd(`SET_TIME:${val}`);
+      showToast('timeToast', `Đã chỉnh đồng hồ sang ${val}!`);
+    }
+
+    function syncPcClockTime() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      document.getElementById('setTimeInput').value = `${hh}:${mm}`;
+      sendCmd(`SET_TIME:${hh}:${mm}`);
+      showToast('timeToast', `Đã đồng bộ giờ máy (${hh}:${mm})!`);
     }
 
     function startVoice() {
