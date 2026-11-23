@@ -297,17 +297,19 @@
       document.getElementById('alarmSub').textContent = `Hẹn giờ: ${d.alarmStr || '--:--'} (${d.alarmOn ? 'Đang bật' : 'Tắt'})`;
       document.getElementById('ringtoneName').textContent = d.ringtone || 'Chưa chọn';
 
-      if (d.songs && d.songs !== lastSongsCsv) {
-        lastSongsCsv = d.songs;
-        const sel = document.getElementById('ringSelect');
-        sel.innerHTML = '';
-        d.songs.split(',').filter(Boolean).forEach(name => {
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = name;
-          sel.appendChild(opt);
-        });
-      }
+     const songArr = Array.isArray(d.songList) ? d.songList : [];
+const songsKey = songArr.join('|');
+if (songArr.length > 0 && songsKey !== lastSongsCsv) {
+  lastSongsCsv = songsKey;
+  const sel = document.getElementById('ringSelect');
+  sel.innerHTML = '';
+  songArr.forEach((name, idx) => {
+    const opt = document.createElement('option');
+    opt.value = String(idx + 1);
+    opt.textContent = `${idx + 1}. ${name}`;
+    sel.appendChild(opt);
+  });
+}
 
       const t = Number(d.temp || 0);
       const h = Number(d.hum || 0);

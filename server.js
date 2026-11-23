@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 const upload = multer({ storage: multer.memoryStorage() });
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
@@ -31,7 +31,9 @@ let deviceState = {
   alarmOn: false,
   ringtone: 'Chua chon',
   mode: 5,
-  songs: '',
+  aiPlaying: false,
+  currentSong: '',
+  songList: [],
   online: false,
   lastSeen: 0
 };
@@ -52,7 +54,7 @@ function pushChat(sender, text) {
 }
 
 setInterval(() => {
-  if (deviceState.online && Date.now() - deviceState.lastSeen > 15000) {
+  if (deviceState.online && Date.now() - deviceState.lastSeen > 16000) {
     deviceState.online = false;
     io.emit('telemetry', deviceState);
   }
@@ -63,22 +65,32 @@ io.on('connection', (socket) => {
 });
 
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
-  const songInfo = deviceState.songs ? `Danh sách bài nhạc trong thẻ SD: ${deviceState.songs}. ` : '';
+  const numberedSongs = deviceState.songList.length > 0
+    ? deviceState.songList.map((name, idx) => `${idx + 1}. ${name}`).join(' | ')
+    : '(Chưa đồng bộ được danh sách thẻ SD)';
+
   const systemContext =
-    `Bạn là trợ lý ảo thông minh của Vang tên của bạn sẽ là Rae. ` +
+    `Bạn là trợ lý ảo thân thiện, thông minh trong Hộp Nhạc IoT. ` +
     `Trạng thái hiện tại: Nhiệt độ ${deviceState.temp}°C, Độ ẩm ${deviceState.hum}%, ` +
     `Ánh sáng ${deviceState.light}%, Pin ${deviceState.usbPower ? 'nguồn USB' : deviceState.bat + '%'}, ` +
-    `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông hiện tại ${deviceState.ringtone}. ` +
-    songInfo +
-    `Trả lời dí dỏm, tinh nghịch, tự nhiên bằng tiếng Việt và cả tiếng anh nếu câu hỏi bằng tiếng anh, nếu người dùng đọc tiếng anh phát âm sai thì chủ động nhắc nhở kèm giải thích trước khi trả lời, tựa như một người bạn thay vì chủ tớ ( không markdown/ký tự đặc biệt) để đọc ra loa. ` +
-    `Nếu người dùng ra lệnh điều khiển hộp nhạc, LUÔN gắn ĐÚNG 1 thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
-    `- Về menu chính / thoát AI: [CMD:MENU] ` +
-    `- Bật nhạc từ thẻ SD chung chung: [CMD:MODE_1] ` +
-    `- Mở đúng tên bài nhạc cụ thể trong thẻ SD (ưu tiên chọn khớp danh sách thẻ SD ở trên, VD "mở bài mùa xuân"): [CMD:PLAY_SONG:mua xuan] ` +
-    `- Bật chế độ 2 Loa Bluetooth (và nhắc người dùng mở Bluetooth kết nối ESP32_AI_Speaker): [CMD:MODE_2] ` +
-    `- Tìm & tự kết nối loa/tai nghe Bluetooth lân cận rồi phát nhạc (chế độ 3): [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:ten bai] nếu có yêu cầu bài) ` +
-    `- Bật chế độ 4 đồng hồ/báo thức và chọn nhạc chuông theo yêu cầu: [CMD:MODE_4:ten chuong] (hoặc [CMD:MODE_4]) ` +
-    `- Thử chuông báo thức ngay: [CMD:TEST_RING]`;
+    `Giờ DS1307 ${deviceState.timeStr}, Nhạc chuông ${deviceState.ringtone}, ` +
+    `Nhạc AI đang phát: ${deviceState.aiPlaying ? (deviceState.currentSong || 'Có') : 'Không'}. ` +
+    `TOÀN BỘ ${deviceState.songList.length} bài nhạc có trong thẻ SD: ${numberedSongs}. ` +
+    `QUY TẮC TRẢ LỜI: ` +
+    `- Nếu người dùng hỏi liệt kê danh sách nhạc, hãy đọc tên một số bài tiêu biểu và báo tổng số bài (${deviceState.songList.length} bài), còn các câu khác trả lời ngắn gọn tối đa 2 câu bằng tiếng Việt tự nhiên (không dùng markdown * # _ \`). ` +
+    `- Khi người dùng yêu cầu phát nhạc / đổi bài / tắt nhạc, MẶC ĐỊNH phát ngay trong chế độ AI (KHÔNG chuyển sang MODE_1 trừ khi người dùng nói rõ "chuyển sang chế độ 1"). ` +
+    `- Gắn ĐÚNG 1 thẻ lệnh ở cuối câu trả lời (không giải thích thẻ): ` +
+    `  * Mở 1 bài cụ thể trong thẻ SD (dùng ĐÚNG số thứ tự từ danh sách trên nếu tìm thấy, VD bài số 5 -> [CMD:AI_PLAY:5], hoặc tên từ khóa -> [CMD:AI_PLAY:habits]): [CMD:AI_PLAY:...] ` +
+    `  * Mở nhạc chung chung / ngẫu nhiên: [CMD:AI_PLAY] ` +
+    `  * Đổi bài khác / bài tiếp theo: [CMD:AI_NEXT] ` +
+    `  * Dừng / tắt nhạc đang phát trong AI: [CMD:AI_STOP] ` +
+    `  * Tiếp tục phát nhạc trong AI: [CMD:AI_RESUME] ` +
+    `  * Về menu chính / thoát chế độ AI: [CMD:MENU] ` +
+    `  * Chuyển hẳn sang chế độ 1 (SD thủ công): [CMD:MODE_1] ` +
+    `  * Bật chế độ 2 Loa Bluetooth (nhắc người dùng kết nối ESP32_AI_Speaker): [CMD:MODE_2] ` +
+    `  * Bật chế độ 3 tìm & tự kết nối loa/tai nghe Bluetooth ngoài rồi phát nhạc: [CMD:MODE_3_PLAY] (hoặc [CMD:MODE_3_PLAY:so_thu_tu_hoac_ten]) ` +
+    `  * Bật chế độ 4 đồng hồ/báo thức & chọn chuông: [CMD:MODE_4:so_thu_tu_hoac_ten] (hoặc [CMD:MODE_4]) ` +
+    `  * Thử chuông báo thức ngay: [CMD:TEST_RING]`;
 
   const parts = [{ text: systemContext }];
   if (audioBuffer) {
@@ -87,18 +99,7 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     });
     parts.push({ text: 'Hãy nghe đoạn ghi âm trên và trả lời người dùng.' });
   } else if (textPrompt) {
-    parts.push({ text: `Người dùng nói: ${textPrompt}` });
-  }
-
-  const models = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.8-flash',
-    'gemini-flash-latest'
-  ];
-
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    parts.push({ text: `Người dùng nói: ${textPrompt}` }); }  const models = [ 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest' ];  for (const model of models) { try { const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await fetch(url, {
         method: 'POST',
         headers: {
@@ -141,10 +142,21 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
 });
 
+// Nhận toàn bộ danh sách bài hát trên thẻ SD từ ESP32 (không giới hạn 260 ký tự)
+app.post('/api/songs', (req, res) => {
+  if (Array.isArray(req.body.songs)) {
+    deviceState.songList = req.body.songs.map(s => String(s).trim()).filter(Boolean);
+    io.emit('telemetry', deviceState);
+    console.log(`[SONGS] Da dong bo ${deviceState.songList.length} bai tu the SD`);
+  }
+  res.json({ ok: true, count: deviceState.songList.length });
+});
+
 app.post('/api/telemetry', (req, res) => {
+  const { songs, ...rest } = req.body || {};
   deviceState = {
     ...deviceState,
-    ...req.body,
+    ...rest,
     online: true,
     lastSeen: Date.now()
   };
