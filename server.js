@@ -16,7 +16,7 @@ app.use(express.text({ type: 'text/plain', limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const REPLY_MP3_PATH = path.join(__dirname, 'latest_reply.mp3');
 
 let deviceState = {
@@ -35,8 +35,8 @@ let deviceState = {
   vol: 60,
   aiPlaying: false,
   currentSong: '',
-  songList: [],     // Ten goc (co ca tieng Nhat/Viet/Anh)
-  displayList: [],  // Ten ASCII/Romaji sach de hien OLED
+  songList: [],
+  displayList: [],
   online: false,
   lastSeen: 0
 };
@@ -46,6 +46,7 @@ const romajiCache = new Map();
 let chatHistory = [];
 let pendingCommand = 'NONE';
 let hasNewAudioForEsp = false;
+let lastGeminiError = 'None';
 
 function pushChat(sender, text) {
   const msg = {
@@ -71,15 +72,15 @@ io.on('connection', (socket) => {
 
 async function callGeminiRaw(parts) {
   if (!GEMINI_KEY) {
+    lastGeminiError = 'MISSING_GEMINI_API_KEY';
     console.error('[GEMINI ERR] Thieu GEMINI_API_KEY trong bien moi truong!');
     return null;
   }
 
-  // Giu fallback on dinh nhat: flash-latest -> 2.0-flash -> 2.5-flash (maxOutputTokens cao de khong bi thinking nuot het)
   const models = [
-    'gemini-flash-latest',
+    'gemini-2.5-flash',
     'gemini-2.0-flash',
-    'gemini-2.5-flash'
+    'gemini-flash-latest'
   ];
 
   for (const model of models) {
@@ -107,9 +108,16 @@ async function callGeminiRaw(parts) {
         .join('')
         .trim();
 
-      if (text) return text;
-      console.error(`[GEMINI ${model} ERR]`, JSON.stringify(data));
+      if (text) {
+        lastGeminiError = 'OK (' + model + ')';
+        return text;
+      }
+      const errMsg = data?.error?.message || JSON.stringify(data);
+      const errCode = data?.error?.code || res.status;
+      lastGeminiError = `${model} -> HTTP ${errCode}: ${errMsg}`;
+      console.error(`[GEMINI ${model} ERR]`, lastGeminiError);
     } catch (err) {
+      lastGeminiError = `${model} -> FETCH: ${err.message}`;
       console.error(`[GEMINI ${model} FETCH ERR]`, err.message);
     }
   }
@@ -141,7 +149,7 @@ async function buildCleanDisplayNames(rawList) {
     }
   });
 
-  if (needTranslate.length > 0) {
+  if (needTranslate.length > 0 && GEMINI_KEY) {
     const promptLines = needTranslate.map((item, i) => `${i}|${item.raw}`).join('\n');
     const prompt =
       `Convert these song filenames (many contain Japanese Kanji/Kana) into short, clean ASCII Romaji/English display titles for a small OLED screen (max 28 chars, remove "- YouTube", "Official Music Video", keep artist + title).\n` +
@@ -172,6 +180,38 @@ async function buildCleanDisplayNames(rawList) {
   });
 }
 
+// Xu ly du phong khi Gemini bi loi quota/key de van mo nhac duoc
+function tryLocalFallbackCommand(textPrompt) {
+  const q = String(textPrompt || '').toLowerCase().trim();
+  if (!q) return null;
+
+  if (/(dừng nhạc|tắt nhạc|ngừng nhạc|stop music)/i.test(q)) {
+    pendingCommand = 'AI_STOP';
+    return { text: 'Ok bồ, mình đã dừng nhạc rồi nhé!', lang: 'vi' };
+  }
+  if (/(đổi bài|bài tiếp|next song|qua bài)/i.test(q)) {
+    pendingCommand = 'AI_NEXT';
+    return { text: 'Chuyển sang bài tiếp theo ngay đây!', lang: 'vi' };
+  }
+  if (/(mở bài|phát bài|nghe bài|chơi bài|play )/i.test(q)) {
+    const cleaned = q
+      .replace(/mở cho tôi bài|mở bài|phát bài|nghe bài|chơi bài|play/gi, '')
+      .trim();
+    if (cleaned && deviceState.songList.length > 0) {
+      const idx = deviceState.songList.findIndex((s) =>
+        s.toLowerCase().includes(cleaned) || basicCleanAscii(s).toLowerCase().includes(cleaned)
+      );
+      if (idx >= 0) {
+        pendingCommand = `AI_PLAY:${idx + 1}`;
+        return { text: `Mở ngay bài ${basicCleanAscii(deviceState.songList[idx])} cho bồ đây!`, lang: 'vi' };
+      }
+    }
+    pendingCommand = 'AI_PLAY';
+    return { text: 'Mình bật nhạc trong thẻ nhớ lên cho bồ nhé!', lang: 'vi' };
+  }
+  return null;
+}
+
 async function askGemini({ textPrompt = null, audioBuffer = null }) {
   const numberedSongs = deviceState.songList.length > 0
     ? deviceState.songList.map((raw, idx) => {
@@ -185,9 +225,8 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
 
   const nowVn = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-  // Tom tat lich su 8 luot gan nhat vao context (tranh loi alternate role tren Gemini REST)
   const validHistory = chatHistory
-    .filter((m) => m.text && !m.text.includes('hơi chập chờn'))
+    .filter((m) => m.text && !m.text.includes('Lỗi Gemini') && !m.text.includes('chập chờn'))
     .slice(-8)
     .map((m) => `${m.sender}: ${m.text}`)
     .join('\n');
@@ -228,7 +267,15 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
 
   const rawText = await callGeminiRaw(parts);
   if (!rawText) {
-    return { text: 'Mạng tới Gemini hơi chập chờn xíu, bồ nói lại giúp mình nha!', lang: 'vi', ok: false };
+    // Thu fallback mo nhac cuc bo neu nguoi dung dang ra lenh nhac
+    if (textPrompt) {
+      const localRes = tryLocalFallbackCommand(textPrompt);
+      if (localRes) return localRes;
+    }
+    return {
+      text: `Lỗi Gemini (${lastGeminiError.slice(0, 95)}). Kiểm tra lại GEMINI_API_KEY trên Render nha!`,
+      lang: 'vi'
+    };
   }
 
   let cleanReply = rawText;
@@ -252,7 +299,7 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     lang = 'en';
   }
 
-  return { text: cleanReply, lang, ok: true };
+  return { text: cleanReply, lang };
 }
 
 function splitTtsChunks(text, maxLen = 180) {
@@ -309,6 +356,16 @@ async function textToMp3File(text, lang = 'vi') {
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, server: 'MusicBox_AI_Cloud', ts: Date.now() });
+});
+
+app.get('/api/debug', (req, res) => {
+  res.json({
+    hasKey: Boolean(GEMINI_KEY),
+    keyPrefix: GEMINI_KEY ? GEMINI_KEY.slice(0, 8) + '...' : null,
+    lastGeminiError,
+    songCount: deviceState.songList.length,
+    online: deviceState.online
+  });
 });
 
 app.post('/api/songs', async (req, res) => {
