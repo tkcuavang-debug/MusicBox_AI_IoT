@@ -44,15 +44,15 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     parts.push({ text: `Người dùng hỏi: ${textPrompt}` });
   }
 
- const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-goog-api-key': GEMINI_KEY
-    },
-    body: JSON.stringify({ contents: [{ parts }] })
-  });
+const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent`;
+const res = await fetch(url, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-goog-api-key': GEMINI_KEY
+  },
+  body: JSON.stringify({ contents: [{ parts }] })
+});
   const data = await res.json();
   if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
     console.error('[GEMINI ERROR]', JSON.stringify(data));
