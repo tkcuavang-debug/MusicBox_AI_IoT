@@ -349,45 +349,56 @@ async function callGeminiRaw(parts) {
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
     'gemini-flash-latest'
   ];
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': GEMINI_KEY
-        },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1024
-          }
-        })
-      });
-      const data = await res.json();
-      const respParts = data?.candidates?.[0]?.content?.parts || [];
-      const text = respParts
-        .filter((p) => !p.thought && typeof p.text === 'string')
-        .map((p) => p.text)
-        .join('')
-        .trim();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-      if (text) {
-        lastGeminiError = 'OK (' + model + ')';
-        return text;
+  for (const model of models) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': GEMINI_KEY
+          },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0.6,
+              maxOutputTokens: 1024
+            }
+          })
+        });
+        const data = await res.json();
+        const respParts = data?.candidates?.[0]?.content?.parts || [];
+        const text = respParts
+          .filter((p) => !p.thought && typeof p.text === 'string')
+          .map((p) => p.text)
+          .join('')
+          .trim();
+
+        if (text) {
+          lastGeminiError = 'OK (' + model + ')';
+          return text;
+        }
+        const errMsg = data?.error?.message || JSON.stringify(data);
+        const errCode = data?.error?.code || res.status;
+        lastGeminiError = `${model} -> HTTP ${errCode}: ${errMsg}`;
+        console.error(`[GEMINI ${model} ERR #${attempt}]`, lastGeminiError);
+        if ((errCode === 503 || errCode === 429) && attempt === 1) {
+          await sleep(1100);
+          continue;
+        }
+        break;
+      } catch (err) {
+        lastGeminiError = `${model} -> FETCH: ${err.message}`;
+        console.error(`[GEMINI ${model} FETCH ERR #${attempt}]`, err.message);
+        break;
       }
-      const errMsg = data?.error?.message || JSON.stringify(data);
-      const errCode = data?.error?.code || res.status;
-      lastGeminiError = `${model} -> HTTP ${errCode}: ${errMsg}`;
-      console.error(`[GEMINI ${model} ERR]`, lastGeminiError);
-    } catch (err) {
-      lastGeminiError = `${model} -> FETCH: ${err.message}`;
-      console.error(`[GEMINI ${model} FETCH ERR]`, err.message);
     }
   }
   return null;
@@ -419,6 +430,32 @@ function normalizeForSearch(text) {
     .trim();
 }
 
+function phoneticKey(text) {
+  return normalizeForSearch(text)
+    .replace(/ph/g, 'f')
+    .replace(/kh|k|q/g, 'c')
+    .replace(/y/g, 'i')
+    .replace(/w/g, 'v')
+    .replace(/z/g, 's')
+    .replace(/\s+/g, '');
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+
 function findBestSongIndexServer(query) {
   const list = deviceState.songList || [];
   if (list.length === 0) return -1;
@@ -431,6 +468,7 @@ function findBestSongIndexServer(query) {
 
   const qNorm = normalizeForSearch(query);
   if (!qNorm) return -1;
+  const qCompact = phoneticKey(qNorm);
   const qTokens = qNorm.split(' ').filter((w) => w.length >= 2);
 
   let bestIdx = -1;
@@ -439,11 +477,28 @@ function findBestSongIndexServer(query) {
   list.forEach((raw, idx) => {
     const disp = deviceState.displayList[idx] || '';
     const target = normalizeForSearch(`${raw} ${disp}`);
+    const tCompact = phoneticKey(target);
+    const tWords = target.split(' ').filter((w) => w.length >= 2);
     let score = 0;
 
-    if (target.includes(qNorm)) score += 100;
+    if (target.includes(qNorm)) score += 120;
+    if (qCompact.length >= 3 && tCompact.includes(qCompact)) score += 90;
+
     for (const tok of qTokens) {
-      if (target.includes(tok)) score += 15;
+      if (target.includes(tok)) {
+        score += 22;
+      } else {
+        const pTok = phoneticKey(tok);
+        for (const tw of tWords) {
+          const pTw = phoneticKey(tw);
+          const dist = levenshtein(pTok, pTw);
+          const maxLen = Math.max(pTok.length, pTw.length);
+          if (maxLen >= 3 && dist / maxLen <= 0.35) {
+            score += 18;
+            break;
+          }
+        }
+      }
     }
 
     if (score > bestScore) {
@@ -452,7 +507,7 @@ function findBestSongIndexServer(query) {
     }
   });
 
-  return bestScore >= 15 ? bestIdx : -1;
+  return bestScore >= 18 ? bestIdx : -1;
 }
 
 async function buildCleanDisplayNames(rawList) {
@@ -587,7 +642,7 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
     `- Kho nhạc thẻ SD (${deviceState.songList.length} bài): ${numberedSongs}\n` +
     (validHistory ? `\nLịch sử hội thoại gần đây:\n${validHistory}\n` : '') +
     `\nNHIỆM VỤ ƯU TIÊN:\n` +
-    `1. ƯU TIÊN HÀNG ĐẦU — MỞ NHẠC QUA MICRO & TÌM BÀI: Khi người dùng yêu cầu mở/phát/tìm bài hát (bằng tên bài, tên ca sĩ, số thứ tự, một đoạn tên gần đúng hoặc thể loại), hãy đối chiếu thật kỹ với Kho nhạc thẻ SD ở trên, chọn ra bài khớp nhất và LUÔN gắn đúng thẻ [CMD:AI_PLAY:so_thu_tu] ở cuối câu trả lời. Nếu người dùng chỉ nói "mở nhạc" chung chung, chọn 1 bài hay hoặc gắn [CMD:AI_PLAY]. Nếu không có bài nào khớp, thông báo nhẹ nhàng và gợi ý 2–3 bài có sẵn trong thẻ SD.\n` +
+    `1. ƯU TIÊN HÀNG ĐẦU — MỞ NHẠC TIẾNG ANH/NHẬT QUA MICRO & TÌM BÀI (CHÚ Ý: Đa số bài trong thẻ SD là TIẾNG ANH/NHẬT; nếu trình duyệt nhận dạng giọng nói bị phiên âm sang tiếng Việt như 'ha bít' = Habit, 'lét hơ gô' = Let Her Go, 'ro bin' = Robin, 'lai gâu on' = Life Goes On..., hãy TỰ SUY LUẬN ra đúng bài tiếng Anh gần âm nhất trong Kho nhạc thẻ SD và gắn [CMD:AI_PLAY:so_thu_tu]): Khi người dùng yêu cầu mở/phát/tìm bài hát (bằng tên bài, tên ca sĩ, số thứ tự, một đoạn tên gần đúng hoặc thể loại), hãy đối chiếu thật kỹ với Kho nhạc thẻ SD ở trên, chọn ra bài khớp nhất và LUÔN gắn đúng thẻ [CMD:AI_PLAY:so_thu_tu] ở cuối câu trả lời. Nếu người dùng chỉ nói "mở nhạc" chung chung, chọn 1 bài hay hoặc gắn [CMD:AI_PLAY]. Nếu không có bài nào khớp, thông báo nhẹ nhàng và gợi ý 2–3 bài có sẵn trong thẻ SD.\n` +
     `2. ĐỌC THỜI GIAN & CẢM BIẾN: Khi người dùng hỏi giờ, báo thức, nhiệt độ, độ ẩm, ánh sáng hoặc pin, hãy đọc chính xác số liệu thực tế ở trên một cách tự nhiên.\n` +
     `3. TRÒ CHUYỆN CƠ BẢN: Trả lời ngắn gọn, thân thiện (1–3 câu, tối đa ~260 ký tự), KHÔNG dùng ký tự markdown (*, #, _, \`) để đọc mượt ra loa.\n` +
     `4. KHÔNG tự ý gắn thẻ [CMD:...] nếu người dùng chỉ hỏi thăm, trò chuyện hoặc hỏi thông số cảm biến/giờ.\n` +
@@ -618,7 +673,7 @@ async function askGemini({ textPrompt = null, audioBuffer = null }) {
       if (localRes) return localRes;
     }
     return {
-      text: `Lỗi Gemini (${lastGeminiError.slice(0, 95)}). Kiểm tra lại GEMINI_API_KEY trên Render nha!`,
+      text: `Máy chủ AI Google đang tạm quá tải (${lastGeminiError.slice(0, 65)}). Bồ thử nói lại sau vài giây hoặc chọn bài trực tiếp ở cột trái nhé!`,
       lang: 'vi'
     };
   }

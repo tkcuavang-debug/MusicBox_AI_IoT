@@ -874,7 +874,10 @@
               <div class="chat-header-title">Trợ lý AI — Mở nhạc bằng Micro & Đọc cảm biến</div>
               <div class="chat-header-sub">Nhấn Micro và nói: “Mở bài...”, “Mấy giờ rồi?”, “Nhiệt độ bao nhiêu?”</div>
             </div>
-            <button id="micBtnTop" class="btn btn-mic" onclick="startVoice()">🎙 Nói mở nhạc</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button id="langToggleBtn" class="btn btn-sec" style="padding:7px 10px;font-size:12px" onclick="toggleVoiceLang()" title="Đổi ngôn ngữ nhận diện giọng nói (Tiếng Anh cho tên bài hát tiếng Anh / Tiếng Việt)">🇬🇧 EN (Tên bài Anh)</button>
+              <button id="micBtnTop" class="btn btn-mic" onclick="startVoice()">🎙 Nói mở nhạc</button>
+            </div>
           </div>
 
           <div id="chatBox" class="chat-box">
@@ -1685,11 +1688,20 @@
       showToast('timeToast', `Đã đồng bộ giờ máy (${hh}:${mm})!`);
     }
 
+    let voiceLang = 'en-US';
+    function toggleVoiceLang() {
+      voiceLang = voiceLang === 'en-US' ? 'vi-VN' : 'en-US';
+      const btn = document.getElementById('langToggleBtn');
+      if (btn) {
+        btn.textContent = voiceLang === 'en-US' ? '🇬🇧 EN (Tên bài Anh)' : '🇻🇳 VN (Tiếng Việt)';
+      }
+    }
+
     function startVoice() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SR) return alert('Trình duyệt không hỗ trợ nhận diện giọng nói. Hãy dùng Chrome hoặc Edge.');
       const rec = new SR();
-      rec.lang = 'vi-VN';
+      rec.lang = voiceLang;
       rec.interimResults = false;
       const btn1 = document.getElementById('micBtn');
       const btn2 = document.getElementById('micBtnTop');
