@@ -55,6 +55,7 @@ async function initDatabase() {
         temp FLOAT NOT NULL,
         hum FLOAT NOT NULL,
         light INT NOT NULL,
+        sound_db INT NOT NULL DEFAULT 35,
         bat_pct INT NOT NULL,
         bat_v FLOAT NOT NULL,
         mode INT NOT NULL,
@@ -94,13 +95,14 @@ async function logSensorToDb(state) {
   lastDbLogTime = now;
   try {
     await dbPool.execute(
-      `INSERT INTO sensor_logs (device_id, temp, hum, light, bat_pct, bat_v, mode, alarm_str, alarm_on)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sensor_logs (device_id, temp, hum, light, sound_db, bat_pct, bat_v, mode, alarm_str, alarm_on)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         'ESP32_MusicBox',
         Number(state.temp || 0),
         Number(state.hum || 0),
         Number(state.light || 0),
+        Number(state.soundDb || 35),
         Number(state.bat ?? -1),
         Number(state.batV || 0),
         Number(state.mode || 5),
@@ -294,6 +296,33 @@ function applyOptimisticCommandState(rawCmd) {
       deviceState.vol = Math.max(0, Math.min(100, v));
       io.emit('telemetry', deviceState);
     }
+    return;
+  }
+
+  if (cmd === 'MODE_2') {
+    deviceState.mode = 2;
+    deviceState.aiPlaying = false;
+    io.emit('telemetry', deviceState);
+    return;
+  }
+
+  if (cmd.startsWith('MODE_3_PLAY')) {
+    deviceState.mode = 3;
+    deviceState.aiPlaying = false;
+    io.emit('telemetry', deviceState);
+    return;
+  }
+
+  if (cmd.startsWith('MODE_1')) {
+    deviceState.mode = 1;
+    io.emit('telemetry', deviceState);
+    return;
+  }
+
+  if (cmd === 'MENU') {
+    deviceState.mode = 0;
+    deviceState.aiPlaying = false;
+    io.emit('telemetry', deviceState);
   }
 }
 
