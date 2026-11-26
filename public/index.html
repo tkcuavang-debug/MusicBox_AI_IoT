@@ -415,7 +415,7 @@
       height: 120px;
       border-radius: 50%;
       border: 2px solid rgba(34, 211, 238, 0.55);
-      opacity: 0.22;
+      animation: radarWave 2.2s ease-out infinite;
     }
     .bt-radar.w2 { animation-delay: 0.75s; border-color: rgba(52, 211, 153, 0.45); }
     .bt-radar.w3 { animation-delay: 1.5s; }
@@ -442,7 +442,7 @@
       width: 34px; height: 34px; border-radius: 50%;
       background: radial-gradient(circle, #38bdf8 0 28%, #0f172a 30% 65%, #334155 68%);
       border: 2px solid #22d3ee;
-      
+      animation: bassBump 0.9s ease-in-out infinite alternate;
     }
     .woofer-cone {
       width: 78px; height: 78px; border-radius: 50%;
@@ -452,7 +452,7 @@
       box-shadow: inset 0 0 14px rgba(34, 211, 238, 0.4);
       display: flex; align-items: center; justify-content: center;
       color: #e0f2fe; font-weight: 800; font-size: 13px;
-      
+      animation: bassBump 0.65s ease-in-out infinite alternate;
     }
     @keyframes bassBump {
       0% { transform: scale(0.96); }
@@ -493,7 +493,7 @@
       width: 8px; height: 8px; border-radius: 50%;
       background: #c084fc;
       box-shadow: 0 0 10px #c084fc;
-      opacity: 0.85;
+      animation: streamFlow 1.2s ease-in-out infinite;
     }
     .hp-dot:nth-child(2) { animation-delay: 0.25s; background: #e879f9; }
     .hp-dot:nth-child(3) { animation-delay: 0.5s; background: #38bdf8; }
@@ -507,7 +507,7 @@
       border: 2px solid #c084fc;
       display: flex; align-items: center; justify-content: center;
       box-shadow: 0 0 24px rgba(168, 85, 247, 0.38);
-      
+      animation: floatHp 2.6s ease-in-out infinite;
     }
     @keyframes floatHp {
       0%, 100% { transform: translateY(0px); }
@@ -840,7 +840,7 @@
               <div class="play-status-badge" style="background:rgba(6,182,212,0.2);color:#22d3ee">
                 CHẾ ĐỘ 2 • A2DP SINK (LOA BLUETOOTH)
               </div>
-              <div class="track-title" style="margin-top:4px">Tên Bluetooth: <span style="color:#22d3ee">ESP32_AI_Speaker</span></div>
+              <div class="track-title" style="margin-top:4px">Tên Bluetooth: <span style="color:#22d3ee">ESP32_MusicBox</span></div>
               <div class="player-controls" style="margin-top:12px">
                 <button class="btn btn-cyan" onclick="activateBtSpeakerMode()">⚡ Kích hoạt Loa Bluetooth ngay</button>
               </div>
@@ -858,7 +858,7 @@
             <div class="mode-info-box">
               <div><b>Cách sử dụng Chế độ Loa Bluetooth:</b></div>
               <div>1. Nhấn nút <b>Kích hoạt Loa Bluetooth ngay</b> để ESP32 mở bộ thu A2DP Sink.</div>
-              <div>2. Trên điện thoại hoặc laptop, bật Bluetooth và kết nối tới thiết bị <b>ESP32_AI_Speaker</b>.</div>
+              <div>2. Trên điện thoại hoặc laptop, bật Bluetooth và kết nối tới thiết bị <b>ESP32_MusicBox</b>.</div>
               <div>3. Phát bất kỳ nhạc YouTube, Spotify, TikTok... âm thanh sẽ phát ra loa 3W 4Ω của hộp nhạc.</div>
               <div style="margin-top:6px;color:#fbbf24"><i>Lưu ý: Khi đang chạy Bluetooth, ESP32 tạm nhường ăng-ten cho Bluetooth; hãy nhấn giữ nút xoay trên hộp nhạc để quay lại Menu/Mode 5.</i></div>
             </div>
@@ -1180,7 +1180,7 @@
       appendMsg({
         sender: 'Hệ thống',
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        text: 'Đã gửi lệnh chuyển hộp nhạc sang Chế độ 2 (Loa Bluetooth). Hãy kết nối Bluetooth điện thoại/laptop vào ESP32_AI_Speaker!'
+        text: 'Đã gửi lệnh chuyển hộp nhạc sang Chế độ 2 (Loa Bluetooth). Hãy kết nối Bluetooth điện thoại/laptop vào ESP32_MusicBox!'
       });
     }
 
