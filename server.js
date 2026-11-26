@@ -345,8 +345,10 @@ async function callGeminiRaw(parts) {
   }
 
   const models = [
+    'gemini-2.5-flash-lite',
     'gemini-2.5-flash',
     'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
     'gemini-flash-latest'
   ];
 
@@ -532,9 +534,12 @@ function tryLocalFallbackCommand(textPrompt) {
       lang: 'vi'
     };
   }
-  if (/(mở bài|mở một bài|mở nhạc|bật bài|bật nhạc|phát bài|phát nhạc|nghe bài|nghe nhạc|chơi bài|tìm bài|play )/i.test(q)) {
+  if (/(mở|bật|phát|nghe|chơi|tìm|play).*(bài|nhạc|song|track)/i.test(q) || /^(mở|bật|phát|play)\s+/i.test(q)) {
+    const stopWords = new Set(['mở', 'bật', 'phát', 'nghe', 'chơi', 'tìm', 'play', 'cho', 'tôi', 'mình', 'tui', 'em', 'anh', 'bồ', 'giúp', 'giùm', 'hộ', 'một', 'bài', 'hát', 'nhạc', 'ca', 'khúc', 'đi', 'nhé', 'nha', 'với', 'ngay', 'luôn', 'nào', 'song', 'track']);
     const cleaned = q
-      .replace(/mở cho tôi bài|mở giúp tôi bài|mở giùm bài|mở bài|bật bài|phát bài|nghe bài|chơi bài|tìm bài|mở nhạc|bật nhạc|phát nhạc|nghe nhạc|play/gi, '')
+      .split(/\s+/)
+      .filter((w) => !stopWords.has(w))
+      .join(' ')
       .trim();
     if (cleaned && deviceState.songList.length > 0) {
       const idx = findBestSongIndexServer(cleaned);
