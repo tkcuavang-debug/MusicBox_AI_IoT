@@ -163,6 +163,8 @@ let deviceState = {
   currentSongIndex: -1,
   songList: [],
   displayList: [],
+  btDevices: [],
+  selectedBtDevice: '',
   online: false,
   lastSeen: 0
 };
@@ -306,7 +308,7 @@ function applyOptimisticCommandState(rawCmd) {
     return;
   }
 
-  if (cmd.startsWith('MODE_3_PLAY')) {
+  if (cmd.startsWith('MODE_3_PLAY') || cmd.startsWith('MODE_3_CONNECT')) {
     deviceState.mode = 3;
     deviceState.aiPlaying = false;
     io.emit('telemetry', deviceState);
@@ -923,6 +925,27 @@ app.post('/api/sound', (req, res) => {
   deviceState.soundSource = String(req.body?.source || 'Web Mic');
   io.emit('telemetry', deviceState);
   res.json({ ok: true, soundDb: db, soundPct: pct });
+});
+
+app.post('/api/bt-devices', (req, res) => {
+  const action = String(req.body?.action || 'add');
+  const name = String(req.body?.name || '').trim();
+  if (action === 'add' && name) {
+    if (!deviceState.btDevices.includes(name)) {
+      deviceState.btDevices.unshift(name);
+      if (deviceState.btDevices.length > 12) deviceState.btDevices.pop();
+    }
+    deviceState.selectedBtDevice = name;
+  } else if (action === 'remove' && name) {
+    deviceState.btDevices = deviceState.btDevices.filter((d) => d !== name);
+    if (deviceState.selectedBtDevice === name) {
+      deviceState.selectedBtDevice = deviceState.btDevices[0] || '';
+    }
+  } else if (action === 'select' && name) {
+    deviceState.selectedBtDevice = name;
+  }
+  io.emit('telemetry', deviceState);
+  res.json({ ok: true, btDevices: deviceState.btDevices, selectedBtDevice: deviceState.selectedBtDevice });
 });
 
 app.post('/api/command', (req, res) => {

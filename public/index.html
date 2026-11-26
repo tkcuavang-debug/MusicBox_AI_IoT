@@ -514,6 +514,47 @@
       50% { transform: translateY(-6px); }
     }
 
+    .bt-dev-box {
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(192, 132, 252, 0.3);
+      border-radius: 12px;
+      padding: 10px 11px;
+      margin-bottom: 9px;
+    }
+    .bt-dev-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      max-height: 76px;
+      overflow-y: auto;
+    }
+    .bt-dev-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid var(--border);
+      color: #e2e8f0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .18s;
+    }
+    .bt-dev-chip.selected {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.38), rgba(236, 72, 153, 0.3));
+      border-color: #c084fc;
+      color: #fff;
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.35);
+    }
+    .bt-dev-del {
+      color: #f87171;
+      font-weight: 800;
+      margin-left: 2px;
+      cursor: pointer;
+    }
     .mode-info-box {
       background: rgba(30, 41, 59, 0.52);
       border: 1px solid var(--border);
@@ -852,8 +893,20 @@
               </div>
             </div>
 
+            <div class="bt-dev-box">
+              <div class="playlist-head" style="margin-bottom:6px">
+                <span class="playlist-title" style="color:#d8b4fe">Thiết bị Bluetooth mục tiêu</span>
+                <span id="selectedBtBadge" style="font-size:11.5px;color:#38bdf8;font-weight:700">Tự quét trên OLED</span>
+              </div>
+              <div style="display:flex;gap:6px">
+                <input id="btDeviceInput" class="song-search" style="margin-bottom:0;padding:6px 9px;font-size:12.5px" type="text" placeholder="Nhập đúng tên loa / tai nghe BT (vd: JBL GO 3, AirPods)..." onkeydown="if(event.key==='Enter') addBtDevice()" />
+                <button class="btn btn-purple" style="padding:6px 11px;font-size:12px" onclick="addBtDevice()">+ Lưu</button>
+              </div>
+              <div id="btDevList" class="bt-dev-list"></div>
+            </div>
+
             <div class="playlist-head">
-              <span class="playlist-title">Chọn bài mở sẵn khi nối Tai nghe BT</span>
+              <span class="playlist-title">Chọn bài phát qua loa/tai nghe BT</span>
             </div>
             <div id="playlistScrollMode3" class="playlist-scroll">
               <div style="color:var(--muted);font-size:13px;text-align:center;padding:18px 8px;">
@@ -861,8 +914,8 @@
               </div>
             </div>
 
-            <div class="mode-info-box" style="margin-top:8px">
-              <div><b>Cách ghép nối:</b> Bật tai nghe/loa Bluetooth ở chế độ Pairing, chọn bài hát ở trên hoặc nhấn <b>Quét & Phát qua Tai nghe BT</b>. Hộp nhạc sẽ tự dò tên thiết bị trên màn hình OLED để bạn chọn bằng núm xoay.</div>
+            <div class="mode-info-box" style="margin-top:7px">
+              <div><b>Lưu ý kỹ thuật ESP32:</b> Do ESP32 dùng chung 1 ăng-ten 2,4 GHz cho Wi-Fi và Bluetooth nên khi đã chuyển sang Mode 2/3, Wi-Fi sẽ tạm tắt để nhạc Bluetooth mượt hơn. Hãy <b>chọn sẵn tên thiết bị & bài hát ở trên trước khi bấm kết nối</b>; muốn quay lại điều khiển trên Web thì nhấn giữ núm xoay trên hộp nhạc về Mode 5.</div>
             </div>
           </div>
         </div>
@@ -1131,16 +1184,88 @@
       });
     }
 
+    let savedBtDevices = JSON.parse(localStorage.getItem('mb_bt_devices') || '[]');
+    let selectedBtDevice = localStorage.getItem('mb_bt_selected') || '';
+
+    function renderBtDevices() {
+      const wrap = document.getElementById('btDevList');
+      const badge = document.getElementById('selectedBtBadge');
+      if (!wrap || !badge) return;
+      badge.textContent = selectedBtDevice ? `Kết nối thẳng: ${selectedBtDevice}` : 'Tự quét trên OLED';
+
+      if (savedBtDevices.length === 0) {
+        wrap.innerHTML = `<span style="font-size:11.5px;color:var(--muted)">Chưa lưu thiết bị nào — nhập tên loa/tai nghe BT ở trên hoặc để trống để quét trên OLED.</span>`;
+        return;
+      }
+      wrap.innerHTML = savedBtDevices.map((name) => {
+        const isSel = name === selectedBtDevice;
+        const safe = escapeHtml(name);
+        return `
+          <span class="bt-dev-chip ${isSel ? 'selected' : ''}" onclick="selectBtDevice('${safe.replace(/'/g, "\'")}')">
+            <span>🎧 ${safe}</span>
+            <span class="bt-dev-del" title="Xóa" onclick="event.stopPropagation(); removeBtDevice('${safe.replace(/'/g, "\'")}')">×</span>
+          </span>
+        `;
+      }).join('');
+    }
+
+    function addBtDevice() {
+      const inp = document.getElementById('btDeviceInput');
+      const name = (inp.value || '').trim();
+      if (!name) return;
+      inp.value = '';
+      if (!savedBtDevices.includes(name)) savedBtDevices.unshift(name);
+      selectedBtDevice = name;
+      localStorage.setItem('mb_bt_devices', JSON.stringify(savedBtDevices));
+      localStorage.setItem('mb_bt_selected', selectedBtDevice);
+      renderBtDevices();
+      fetch('/api/bt-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', name })
+      }).catch(() => {});
+    }
+
+    function selectBtDevice(name) {
+      selectedBtDevice = (selectedBtDevice === name) ? '' : name;
+      localStorage.setItem('mb_bt_selected', selectedBtDevice);
+      renderBtDevices();
+      fetch('/api/bt-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'select', name: selectedBtDevice })
+      }).catch(() => {});
+    }
+
+    function removeBtDevice(name) {
+      savedBtDevices = savedBtDevices.filter(d => d !== name);
+      if (selectedBtDevice === name) selectedBtDevice = savedBtDevices[0] || '';
+      localStorage.setItem('mb_bt_devices', JSON.stringify(savedBtDevices));
+      localStorage.setItem('mb_bt_selected', selectedBtDevice);
+      renderBtDevices();
+      fetch('/api/bt-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove', name })
+      }).catch(() => {});
+    }
+
+    renderBtDevices();
+
     function activateBtHeadphoneMode(songName = '') {
       selectWebMusicMode(3);
-      const cmd = songName ? `MODE_3_PLAY:${songName}` : 'MODE_3_PLAY';
+      const cmd = selectedBtDevice
+        ? `MODE_3_CONNECT:${selectedBtDevice}|${songName}`
+        : (songName ? `MODE_3_PLAY:${songName}` : 'MODE_3_PLAY');
       sendCmd(cmd);
       appendMsg({
         sender: 'Hệ thống',
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        text: songName
-          ? `Đã gửi lệnh chuyển sang Chế độ 3 (Tai nghe Bluetooth) và chọn sẵn bài "${songName}".`
-          : 'Đã gửi lệnh chuyển sang Chế độ 3 (Tai nghe Bluetooth). Hãy nhìn màn hình OLED để chọn tai nghe cần ghép nối!'
+        text: selectedBtDevice
+          ? `Đã gửi lệnh kết nối thẳng tới "${selectedBtDevice}"${songName ? ` và phát bài "${songName}"` : ''}!`
+          : (songName
+              ? `Đã gửi lệnh chuyển sang Chế độ 3 (Tai nghe BT) và chọn sẵn bài "${songName}".`
+              : 'Đã gửi lệnh chuyển sang Chế độ 3 (Tai nghe Bluetooth). Hãy chọn thiết bị trên màn hình OLED!')
       });
     }
 
