@@ -15,6 +15,7 @@
       --text: #f8fafc;
       --muted: #94a3b8;
       --accent: #3b82f6;
+      --cyan: #06b6d4;
       --ok: #22c55e;
       --warn: #f59e0b;
       --err: #ef4444;
@@ -33,11 +34,12 @@
     }
 
     header {
-      background: rgba(10, 17, 32, 0.9);
+      background: rgba(10, 17, 32, 0.92);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       padding: 10px 20px;
       display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      z-index: 10;
     }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; letter-spacing: 0.2px; }
     .brand-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--err); box-shadow: 0 0 10px var(--err); transition: .3s; }
@@ -71,49 +73,438 @@
     .view { display: none; flex: 1; height: 100%; overflow: hidden; }
     .view.active { display: flex; flex-direction: column; }
 
-    /* Chat View */
-    .chat-wrap {
-      flex: 1; max-width: 920px; width: 100%; margin: 0 auto;
-      display: flex; flex-direction: column; height: 100%; padding: 14px 16px 16px;
+    /* ================= TAB 1: SPLIT PLAYER + AI CHAT ================= */
+    .studio-grid {
+      flex: 1;
+      max-width: 1320px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 14px 16px 16px;
+      display: grid;
+      grid-template-columns: 420px minmax(0, 1fr);
+      gap: 16px;
+      height: 100%;
+      overflow: hidden;
     }
-    .now-playing-bar {
-      display: none;
-      align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-      background: linear-gradient(90deg, rgba(59,130,246,0.16), rgba(6,182,212,0.14));
-      border: 1px solid rgba(59,130,246,0.35);
-      border-radius: 12px; padding: 9px 14px; margin-bottom: 10px; font-size: 13px;
+    @media (max-width: 960px) {
+      .studio-grid {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+        height: auto;
+      }
+      .view.active { overflow-y: auto; }
     }
-    .now-playing-bar.show { display: flex; }
+
+    .panel {
+      background: var(--surface);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Spinning Vinyl Stage & Floating Notes */
+    .turntable-card {
+      position: relative;
+      background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.14), rgba(15, 23, 42, 0.92) 70%);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: 16px;
+      padding: 14px 14px 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .turntable-stage {
+      position: relative;
+      height: 164px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .notes-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 4;
+    }
+    .float-note {
+      position: absolute;
+      bottom: 24px;
+      font-size: 20px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-shadow: 0 0 10px rgba(56, 189, 248, 0.85);
+      opacity: 0;
+      animation: noteRise var(--dur, 2.8s) ease-out forwards;
+      user-select: none;
+    }
+    @keyframes noteRise {
+      0% {
+        opacity: 0;
+        transform: translate(0, 10px) scale(0.75) rotate(-10deg);
+      }
+      18% {
+        opacity: 0.95;
+      }
+      75% {
+        opacity: 0.75;
+      }
+      100% {
+        opacity: 0;
+        transform: translate(var(--dx, 18px), -135px) scale(1.25) rotate(var(--rot, 18deg));
+      }
+    }
+
+    .vinyl-glow {
+      position: absolute;
+      width: 148px;
+      height: 148px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.35), transparent 68%);
+      filter: blur(10px);
+      opacity: 0.25;
+      transition: opacity 0.4s;
+    }
+    .turntable-card.playing .vinyl-glow {
+      opacity: 0.95;
+      animation: glowPulse 2.2s ease-in-out infinite;
+    }
+    @keyframes glowPulse {
+      0%, 100% { transform: scale(1); opacity: 0.75; }
+      50% { transform: scale(1.12); opacity: 1; }
+    }
+
+    .vinyl-disc {
+      position: relative;
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at center, #0f172a 0 12%, #38bdf8 12% 14%, #1d4ed8 14% 33%, #0b1120 33% 35%, transparent 35%),
+        repeating-radial-gradient(circle at center, #111827 0px, #111827 3px, #1e293b 4px, #090d16 5px);
+      box-shadow:
+        0 0 0 3px rgba(148, 163, 184, 0.18),
+        0 10px 26px rgba(0, 0, 0, 0.65),
+        inset 0 0 18px rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: spinVinyl 4.2s linear infinite;
+      animation-play-state: paused;
+      z-index: 2;
+    }
+    .vinyl-disc::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 0deg,
+        rgba(255, 255, 255, 0.16) 0deg 22deg,
+        transparent 45deg 180deg,
+        rgba(56, 189, 248, 0.14) 180deg 205deg,
+        transparent 230deg 360deg
+      );
+      pointer-events: none;
+    }
+    .vinyl-label {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #38bdf8, #6366f1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.35);
+      position: relative;
+      z-index: 2;
+    }
+    .vinyl-label::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #070d1a;
+      border: 2px solid #e2e8f0;
+    }
+    .turntable-card.playing .vinyl-disc {
+      animation-play-state: running;
+    }
+    @keyframes spinVinyl {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Tonearm */
+    .tonearm {
+      position: absolute;
+      right: 52px;
+      top: 14px;
+      width: 46px;
+      height: 92px;
+      transform-origin: 34px 12px;
+      transform: rotate(-22deg);
+      transition: transform 0.55s cubic-bezier(.22, .61, .36, 1);
+      z-index: 3;
+      pointer-events: none;
+    }
+    .turntable-card.playing .tonearm {
+      transform: rotate(6deg);
+    }
+    .tonearm-pivot {
+      position: absolute;
+      right: 4px;
+      top: 4px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #cbd5e1, #475569);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .tonearm-rod {
+      position: absolute;
+      right: 10px;
+      top: 16px;
+      width: 4px;
+      height: 62px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #e2e8f0, #94a3b8);
+      transform: rotate(12deg);
+    }
+    .tonearm-head {
+      position: absolute;
+      right: 14px;
+      top: 72px;
+      width: 12px;
+      height: 16px;
+      border-radius: 3px;
+      background: #38bdf8;
+      transform: rotate(22deg);
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+    }
+
+    .track-meta {
+      text-align: center;
+      margin-top: 2px;
+    }
+    .play-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.7px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.16);
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+    .turntable-card.playing .play-status-badge {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+    }
+    .eq-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 11px;
+    }
+    .eq-bars span {
+      width: 2.5px;
+      height: 3px;
+      background: currentColor;
+      border-radius: 1px;
+    }
+    .turntable-card.playing .eq-bars span {
+      animation: eqBounce 0.7s ease-in-out infinite alternate;
+    }
+    .turntable-card.playing .eq-bars span:nth-child(2) { animation-delay: 0.2s; }
+    .turntable-card.playing .eq-bars span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes eqBounce {
+      from { height: 3px; }
+      to { height: 11px; }
+    }
+
+    .track-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 4px;
+    }
+    .player-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .ctrl-btn {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .2s;
+    }
+    .ctrl-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .ctrl-btn.play-main {
+      background: linear-gradient(135deg, #0ea5e9, #2563eb);
+      border-color: transparent;
+      padding: 7px 18px;
+      box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+    }
 
     .vol-bar-card {
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; padding: 8px 14px; margin-bottom: 10px; font-size: 13px;
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(30, 41, 59, 0.55); border: 1px solid var(--border);
+      border-radius: 12px; padding: 7px 10px; margin-bottom: 10px; font-size: 12.5px;
     }
     .vol-slider {
-      flex: 1; min-width: 120px; accent-color: #38bdf8; cursor: pointer; height: 6px;
+      flex: 1; min-width: 80px; accent-color: #38bdf8; cursor: pointer; height: 6px;
     }
-    .vol-val { min-width: 40px; text-align: right; font-weight: 700; color: #38bdf8; font-variant-numeric: tabular-nums; }
+    .vol-val { min-width: 38px; text-align: right; font-weight: 700; color: #38bdf8; font-variant-numeric: tabular-nums; }
 
-    .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 8px 4px 14px; }
-    .msg { max-width: 82%; padding: 12px 16px; border-radius: 16px; line-height: 1.55; font-size: 14.5px; word-wrap: break-word; }
+    /* Direct Playlist Picker */
+    .playlist-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .playlist-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .song-search {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 11px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      margin-bottom: 8px;
+    }
+    .song-search:focus { border-color: #38bdf8; }
+    .playlist-scroll {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      padding-right: 3px;
+      min-height: 160px;
+    }
+    .song-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(30, 41, 59, 0.45);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: .18s;
+      text-align: left;
+      color: var(--text);
+      width: 100%;
+    }
+    .song-item:hover {
+      background: rgba(59, 130, 246, 0.16);
+      border-color: rgba(59, 130, 246, 0.35);
+    }
+    .song-item.active {
+      background: linear-gradient(90deg, rgba(14, 165, 233, 0.25), rgba(37, 99, 235, 0.2));
+      border-color: rgba(56, 189, 248, 0.6);
+    }
+    .song-num {
+      min-width: 26px;
+      height: 24px;
+      border-radius: 7px;
+      background: rgba(15, 23, 42, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .song-item.active .song-num {
+      background: #0ea5e9;
+      color: #fff;
+    }
+    .song-name {
+      flex: 1;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .song-play-icon {
+      font-size: 12px;
+      color: #38bdf8;
+      font-weight: 700;
+    }
+
+    /* Chat Column */
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .chat-header-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+    .chat-header-sub {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .chat-box { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; padding: 6px 4px 12px; }
+    .msg { max-width: 84%; padding: 11px 15px; border-radius: 16px; line-height: 1.5; font-size: 14px; word-wrap: break-word; }
     .msg.user { align-self: flex-end; background: linear-gradient(135deg, #2563eb, #0284c7); color: #fff; border-bottom-right-radius: 4px; box-shadow: 0 4px 14px rgba(2,132,199,0.28); }
     .msg.ai { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
     .msg-meta { font-size: 11px; opacity: .72; margin-bottom: 4px; font-weight: 600; }
 
-    .quick-cmds { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 10px; }
+    .quick-cmds { display: flex; gap: 7px; overflow-x: auto; padding: 8px 0 9px; }
     .chip {
-      white-space: nowrap; background: var(--surface); border: 1px solid var(--border);
-      color: var(--text); padding: 6px 13px; border-radius: 999px; font-size: 12.5px; cursor: pointer; transition: .2s;
+      white-space: nowrap; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 12px; border-radius: 999px; font-size: 12px; cursor: pointer; transition: .2s;
     }
-    .chip:hover { border-color: var(--accent); background: var(--surface-2); transform: translateY(-1px); }
+    .chip:hover { border-color: var(--accent); background: rgba(59, 130, 246, 0.22); transform: translateY(-1px); }
 
     .input-bar {
-      display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border);
-      padding: 8px 10px; border-radius: 16px; align-items: center;
+      display: flex; gap: 8px; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 8px 10px; border-radius: 15px; align-items: center;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     }
-    .input-bar input { flex: 1; background: transparent; border: none; color: var(--text); font-size: 14.5px; padding: 6px 8px; outline: none; }
+    .input-bar input { flex: 1; background: transparent; border: none; color: var(--text); font-size: 14px; padding: 6px 8px; outline: none; }
 
     .btn {
       border: none; border-radius: 10px; padding: 8px 14px; font-weight: 600;
@@ -125,13 +516,20 @@
     .btn-ok { background: #16a34a; color: #fff; }
     .btn-warn { background: #d97706; color: #fff; }
     .btn-danger { background: #dc2626; color: #fff; }
-    .btn-mic { background: #dc2626; color: #fff; }
-    .btn-mic.listening { background: var(--warn); animation: pulse 1s infinite; }
-    @keyframes pulse { 50% { opacity: .6; } }
+    .btn-mic {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
+    }
+    .btn-mic.listening { background: linear-gradient(135deg, #f59e0b, #d97706); animation: pulse 1s infinite; }
+    @keyframes pulse { 50% { opacity: .65; transform: scale(1.03); } }
 
-    /* Sensors & Control View */
+    /* ================= TAB 2: SENSORS & HISTORY ================= */
     .sensors-wrap {
-      flex: 1; overflow-y: auto; max-width: 1180px; width: 100%; margin: 0 auto;
+      flex: 1; overflow-y: auto; max-width: 1220px; width: 100%; margin: 0 auto;
       padding: 18px 16px 32px; display: flex; flex-direction: column; gap: 16px;
     }
     .top-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
@@ -146,7 +544,7 @@
     .card-title {
       font-size: 11.5px; color: var(--muted); text-transform: uppercase;
       letter-spacing: .7px; margin-bottom: 10px; font-weight: 700;
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
     }
     .clock-val {
       font-size: 38px; font-weight: 800; letter-spacing: 2px;
@@ -155,7 +553,7 @@
       font-variant-numeric: tabular-nums; line-height: 1.1;
     }
     .alarm-sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
-    .ring-badge { font-size: 16.5px; font-weight: 700; color: #fbbf24; word-break: break-word; min-height: 24px; }
+    .ring-badge { font-size: 16px; font-weight: 700; color: #fbbf24; word-break: break-word; min-height: 24px; }
 
     .ctrl-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
     .ctrl-row input[type="time"],
@@ -164,7 +562,6 @@
       border: 1px solid var(--border); border-radius: 9px; padding: 7px 10px; font-size: 13.5px; outline: none;
     }
     .ctrl-row input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
-
     .toast-msg { font-size: 12px; color: #38bdf8; margin-top: 7px; min-height: 16px; }
 
     .gauge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
@@ -178,7 +575,83 @@
     .charts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     @media (max-width: 780px) { .charts-grid { grid-template-columns: 1fr; } }
     .chart-card { height: 245px; display: flex; flex-direction: column; }
+    .vu-wrap { width: 100%; height: 8px; background: #1e293b; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+    .vu-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #22c55e, #facc15, #ef4444); transition: width 0.08s linear; border-radius: 999px; }
+    .chart-card.full-span { grid-column: 1 / -1; height: 225px; }
     .chart-holder { flex: 1; position: relative; min-height: 170px; }
+
+    /* Sensor History Bar / Table */
+    .history-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .history-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .history-count {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.14);
+      color: #38bdf8;
+      font-weight: 700;
+    }
+    .history-table-wrap {
+      max-height: 290px;
+      overflow-y: auto;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(9, 14, 28, 0.72);
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .history-table th {
+      position: sticky;
+      top: 0;
+      background: #132038;
+      color: #cbd5e1;
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      z-index: 2;
+    }
+    .history-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.09);
+      color: #e2e8f0;
+      white-space: nowrap;
+    }
+    .history-table tbody tr:hover {
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .history-table tbody tr.row-new {
+      animation: rowFlash 1.2s ease-out;
+    }
+    @keyframes rowFlash {
+      0% { background: rgba(56, 189, 248, 0.28); }
+      100% { background: transparent; }
+    }
+    .badge-mini {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .badge-on { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+    .badge-off { background: rgba(148, 163, 184, 0.14); color: #94a3b8; }
   </style>
 </head>
 <body>
@@ -189,7 +662,7 @@
     </div>
 
     <div class="tabs">
-      <button class="tab-btn active" onclick="switchTab('chat', this)">Trò chuyện AI</button>
+      <button class="tab-btn active" onclick="switchTab('chat', this)">Phát nhạc & Trợ lý AI</button>
       <button class="tab-btn" onclick="switchTab('sensors', this)">Cảm biến & Đồng hồ</button>
     </div>
 
@@ -203,50 +676,98 @@
   </header>
 
   <main>
+    <!-- ================= TAB 1: DIRECT PLAYER + AI VOICE CHAT ================= -->
     <section id="view-chat" class="view active">
-      <div class="chat-wrap">
-        <div id="nowPlayingBar" class="now-playing-bar">
-          <span id="nowPlayingText">Đang phát: --</span>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-sec" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_NEXT')">Bài tiếp</button>
-            <button class="btn btn-danger" style="padding:5px 10px;font-size:12px" onclick="sendCmd('AI_STOP')">Dừng</button>
+      <div class="studio-grid">
+        <!-- Cột trái: Đĩa xoay + Nốt nhạc bay + Chọn bài trực tiếp -->
+        <div class="panel">
+          <div id="turntableCard" class="turntable-card">
+            <div class="turntable-stage">
+              <div id="notesLayer" class="notes-layer"></div>
+              <div class="vinyl-glow"></div>
+              <div class="vinyl-disc">
+                <div class="vinyl-label">♫</div>
+              </div>
+              <div class="tonearm">
+                <div class="tonearm-pivot"></div>
+                <div class="tonearm-rod"></div>
+                <div class="tonearm-head"></div>
+              </div>
+            </div>
+
+            <div class="track-meta">
+              <div id="playStatusBadge" class="play-status-badge">
+                <span class="eq-bars"><span></span><span></span><span></span></span>
+                <span id="playStatusText">ĐANG DỪNG</span>
+              </div>
+              <div id="nowPlayingTitle" class="track-title">Chọn một bài bên dưới hoặc gọi Micro AI</div>
+            </div>
+
+            <div class="player-controls">
+              <button class="ctrl-btn" onclick="playPrevSong()" title="Bài trước">⏮ Trước</button>
+              <button id="btnPlayToggle" class="ctrl-btn play-main" onclick="togglePlayPause()">▶ Phát nhạc</button>
+              <button class="ctrl-btn" onclick="sendCmd('AI_NEXT')" title="Bài tiếp">Tiếp ⏭</button>
+              <button class="ctrl-btn" onclick="sendCmd('AI_STOP')" title="Dừng hẳn">⏹ Dừng</button>
+            </div>
+          </div>
+
+          <div class="vol-bar-card">
+            <span style="color:var(--muted);font-weight:600">Loa:</span>
+            <button class="btn btn-sec" style="padding:4px 8px;font-size:11.5px" onclick="stepVolume(-10)">-10%</button>
+            <input id="volSliderChat" class="vol-slider" type="range" min="0" max="100" step="5" value="60"
+                   oninput="previewVolUI(this.value)" onchange="applyVolume(this.value)" />
+            <button class="btn btn-sec" style="padding:4px 8px;font-size:11.5px" onclick="stepVolume(10)">+10%</button>
+            <span id="volTextChat" class="vol-val">60%</span>
+          </div>
+
+          <div class="playlist-head">
+            <span class="playlist-title">Kho nhạc thẻ nhớ SD (<span id="songCountLbl">0</span> bài)</span>
+            <button class="btn btn-sec" style="padding:4px 9px;font-size:11.5px" onclick="playRandomSong()">🎲 Ngẫu nhiên</button>
+          </div>
+          <input id="songSearchInput" class="song-search" type="text" placeholder="Tìm nhanh tên bài hát trong thẻ SD..." oninput="renderPlaylist()" />
+          <div id="playlistScroll" class="playlist-scroll">
+            <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 8px;">
+              Đang chờ ESP32 đồng bộ danh sách bài hát từ thẻ nhớ MicroSD...
+            </div>
           </div>
         </div>
 
-        <div class="vol-bar-card">
-          <span style="color:var(--muted);font-weight:600">Âm lượng loa:</span>
-          <button class="btn btn-sec" style="padding:4px 10px;font-size:12px" onclick="stepVolume(-10)">-10%</button>
-          <input id="volSliderChat" class="vol-slider" type="range" min="0" max="100" step="5" value="60"
-                 oninput="previewVolUI(this.value)" onchange="applyVolume(this.value)" />
-          <button class="btn btn-sec" style="padding:4px 10px;font-size:12px" onclick="stepVolume(10)">+10%</button>
-          <span id="volTextChat" class="vol-val">60%</span>
-        </div>
-
-        <div id="chatBox" class="chat-box">
-          <div class="msg ai">
-            <div class="msg-meta">Trợ lý AI</div>
-            Chào bồ! Tui sẵn sàng trò chuyện, giải đáp thắc mắc, kiểm tra cảm biến, mở nhạc theo tên bài hoặc đặt báo thức giúp bồ ngay đây.
+        <!-- Cột phải: Trợ lý AI ưu tiên mở nhạc qua Micro & đọc cảm biến -->
+        <div class="panel">
+          <div class="chat-header">
+            <div>
+              <div class="chat-header-title">Trợ lý AI — Mở nhạc bằng Micro & Đọc cảm biến</div>
+              <div class="chat-header-sub">Nhấn Micro và nói: “Mở bài...”, “Mấy giờ rồi?”, “Nhiệt độ bao nhiêu?”</div>
+            </div>
+            <button id="micBtnTop" class="btn btn-mic" onclick="startVoice()">🎙 Nói mở nhạc</button>
           </div>
-        </div>
 
-        <div class="quick-cmds">
-          <button class="chip" onclick="sendCmd('AI_PLAY')">Phát nhạc (AI)</button>
-          <button class="chip" onclick="sendCmd('AI_NEXT')">Đổi bài</button>
-          <button class="chip" onclick="sendCmd('AI_STOP')">Dừng nhạc</button>
-          <button class="chip" onclick="sendCmd('MODE_2')">Loa BT (Mode 2)</button>
-          <button class="chip" onclick="sendCmd('MODE_3_PLAY')">Tai nghe BT (Mode 3)</button>
-          <button class="chip" onclick="sendCmd('TEST_RING')">Thử chuông</button>
-          <button class="chip" onclick="sendCmd('MENU')">Về Menu</button>
-        </div>
+          <div id="chatBox" class="chat-box">
+            <div class="msg ai">
+              <div class="msg-meta">Trợ lý AI</div>
+              Chào bồ! Nhấn nút <b>Mic</b> rồi đọc tên bài hát mình sẽ tìm và mở ngay trên loa hộp nhạc. Mình cũng có thể đọc giờ, nhiệt độ, độ ẩm, ánh sáng, mức pin và trò chuyện cùng bồ nữa nhé!
+            </div>
+          </div>
 
-        <div class="input-bar">
-          <input id="chatInput" type="text" placeholder="Nhắn gì đó cho AI (hỏi chuyện, mở nhạc, đặt báo thức)..." onkeydown="if(event.key==='Enter') sendChat()" />
-          <button class="btn btn-primary" onclick="sendChat()">Gửi</button>
-          <button id="micBtn" class="btn btn-mic" onclick="startVoice()">Mic</button>
+          <div class="quick-cmds">
+            <button class="chip" onclick="quickAsk('Đọc giờ hiện tại và thông số nhiệt độ, độ ẩm, ánh sáng, pin')">📊 Đọc cảm biến & giờ</button>
+            <button class="chip" onclick="quickAsk('Mở giúp mình một bài nhạc trong thẻ SD')">🎵 AI chọn bài</button>
+            <button class="chip" onclick="sendCmd('MODE_2')">Loa BT (Mode 2)</button>
+            <button class="chip" onclick="sendCmd('MODE_3_PLAY')">Tai nghe BT (Mode 3)</button>
+            <button class="chip" onclick="sendCmd('TEST_RING')">Thử chuông</button>
+            <button class="chip" onclick="sendCmd('MENU')">Về Menu</button>
+          </div>
+
+          <div class="input-bar">
+            <input id="chatInput" type="text" placeholder="Nhập yêu cầu (vd: Mở bài..., Mấy giờ rồi?, Nhiệt độ hiện tại?)..." onkeydown="if(event.key==='Enter') sendChat()" />
+            <button class="btn btn-primary" onclick="sendChat()">Gửi</button>
+            <button id="micBtn" class="btn btn-mic" onclick="startVoice()">🎙 Mic</button>
+          </div>
         </div>
       </div>
     </section>
 
+    <!-- ================= TAB 2: SENSORS, CHARTS & HISTORY BAR ================= -->
     <section id="view-sensors" class="view">
       <div class="sensors-wrap">
         <div class="top-cards">
@@ -331,6 +852,18 @@
             <div id="valLight" class="gauge-val">-- %</div>
             <div class="gauge-sub">Thang đo 0 – 100%</div>
           </div>
+
+          <div class="card gauge-card">
+            <div class="card-title" style="justify-content:center">Âm thanh (Mic)</div>
+            <svg class="gauge-svg" viewBox="0 0 200 115">
+              <path class="gauge-bg" d="M 20 100 A 80 80 0 0 1 180 100" />
+              <path id="arcSound" class="gauge-arc" stroke="#a855f7" stroke-dasharray="251.2" stroke-dashoffset="251.2" d="M 20 100 A 80 80 0 0 1 180 100" />
+            </svg>
+            <div id="valSound" class="gauge-val">35 dB</div>
+            <div id="soundSourceSub" class="gauge-sub">Nguồn: ESP32 INMP441 / Web Mic</div>
+            <div class="vu-wrap"><div id="soundVuFill" class="vu-fill"></div></div>
+            <button id="btnLiveMicMeter" class="btn btn-sec" style="margin-top:9px;padding:5px 11px;font-size:12px" onclick="toggleWebMicSensor()">🎙 Bật đo Mic trực tiếp</button>
+          </div>
         </div>
 
         <!-- 4 Đồ thị riêng biệt -->
@@ -351,6 +884,50 @@
             <div class="card-title"><span>4. Đồ thị Điện áp Pin (V)</span><span id="lblChartBat" style="color:#22c55e">--V</span></div>
             <div class="chart-holder"><canvas id="chartBat"></canvas></div>
           </div>
+          <div class="card chart-card full-span">
+            <div class="card-title"><span>5. Đồ thị Cường độ âm thanh Mic (dB)</span><span id="lblChartSound" style="color:#a855f7">35 dB</span></div>
+            <div class="chart-holder"><canvas id="chartSound"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Thanh lịch sử đọc cảm biến bên dưới -->
+        <div class="card history-card">
+          <div class="card-title" style="margin-bottom:0">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span>Lịch sử đọc cảm biến (Thời gian thực)</span>
+              <span id="historyCountBadge" class="history-count">0 bản ghi</span>
+            </div>
+            <div class="history-actions">
+              <button class="btn btn-sec" style="padding:5px 10px;font-size:12px" onclick="refreshSensorHistory()">↻ Tải lại</button>
+              <button class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="exportHistoryCsv()">⬇ Xuất CSV</button>
+            </div>
+          </div>
+
+          <div class="history-table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Thời gian ghi</th>
+                  <th>Giờ DS1307</th>
+                  <th>Nhiệt độ</th>
+                  <th>Độ ẩm</th>
+                  <th>Ánh sáng</th>
+                  <th>Âm thanh</th>
+                  <th>Pin (V / %)</th>
+                  <th>Chế độ</th>
+                  <th>Báo thức</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">
+                    Chưa có dữ liệu lịch sử cảm biến. Khi ESP32 gửi telemetry, lịch sử sẽ tự động cập nhật tại đây.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -362,6 +939,14 @@
     let lastSongsCsv = '';
     let volLockUntil = 0;
 
+    let cachedSongs = [];
+    let cachedDisplaySongs = [];
+    let currentPlayingState = false;
+    let currentPlayingIndex = -1;
+    let currentPlayingTitle = '';
+    let sensorHistoryRows = [];
+    let noteTimer = null;
+
     function switchTab(tab, btn) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -372,6 +957,7 @@
         chartHum.resize();
         chartLight.resize();
         chartBat.resize();
+        chartSound.resize();
       }
     }
 
@@ -381,7 +967,7 @@
 
     function appendMsg(msg) {
       const box = document.getElementById('chatBox');
-      const isUser = msg.sender === 'Bạn' || msg.sender === 'ESP32 Mic';
+      const isUser = msg.sender === 'Bạn' || msg.sender === 'Bạn (Mic)' || msg.sender === 'ESP32 Mic';
       const div = document.createElement('div');
       div.className = 'msg ' + (isUser ? 'user' : 'ai');
       div.innerHTML = `<div class="msg-meta">${escapeHtml(msg.sender)} • ${escapeHtml(msg.time || '')}</div>${escapeHtml(msg.text)}`;
@@ -394,6 +980,136 @@
       document.getElementById(id).style.strokeDashoffset = (ARC_LEN * (1 - pct)).toFixed(1);
     }
 
+    /* ================= SPINNING VINYL + FLOATING NOTES ================= */
+    const NOTE_SYMBOLS = ['♪', '♫', '♬', '♩', '𝄞'];
+    const NOTE_COLORS = ['#38bdf8', '#818cf8', '#22d3ee', '#f472b6', '#4ade80', '#facc15'];
+
+    function spawnFloatingNote() {
+      const layer = document.getElementById('notesLayer');
+      if (!layer || !currentPlayingState) return;
+      const el = document.createElement('span');
+      el.className = 'float-note';
+      el.textContent = NOTE_SYMBOLS[Math.floor(Math.random() * NOTE_SYMBOLS.length)];
+      el.style.left = (18 + Math.random() * 64) + '%';
+      el.style.fontSize = (16 + Math.random() * 11) + 'px';
+      el.style.color = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
+      el.style.setProperty('--dx', ((Math.random() - 0.5) * 70).toFixed(0) + 'px');
+      el.style.setProperty('--rot', ((Math.random() - 0.5) * 48).toFixed(0) + 'deg');
+      el.style.setProperty('--dur', (2.2 + Math.random() * 1.4).toFixed(2) + 's');
+      layer.appendChild(el);
+      setTimeout(() => el.remove(), 3800);
+    }
+
+    function setPlayingVisual(isPlaying, songTitle, songIdx) {
+      currentPlayingState = Boolean(isPlaying);
+      if (songTitle) currentPlayingTitle = songTitle;
+      if (typeof songIdx === 'number' && songIdx >= 0) currentPlayingIndex = songIdx;
+
+      const card = document.getElementById('turntableCard');
+      const statusTxt = document.getElementById('playStatusText');
+      const titleEl = document.getElementById('nowPlayingTitle');
+      const btnToggle = document.getElementById('btnPlayToggle');
+
+      if (currentPlayingState) {
+        card.classList.add('playing');
+        statusTxt.textContent = 'ĐANG PHÁT NHẠC';
+        titleEl.textContent = currentPlayingTitle || 'Đang phát nhạc từ thẻ SD...';
+        btnToggle.textContent = '⏸ Tạm dừng';
+        if (!noteTimer) {
+          spawnFloatingNote();
+          noteTimer = setInterval(spawnFloatingNote, 480);
+        }
+      } else {
+        card.classList.remove('playing');
+        statusTxt.textContent = 'ĐANG DỪNG';
+        titleEl.textContent = currentPlayingTitle || 'Chọn một bài bên dưới hoặc gọi Micro AI';
+        btnToggle.textContent = '▶ Phát nhạc';
+        if (noteTimer) {
+          clearInterval(noteTimer);
+          noteTimer = null;
+        }
+      }
+      renderPlaylist();
+    }
+
+    function renderPlaylist() {
+      const box = document.getElementById('playlistScroll');
+      const countLbl = document.getElementById('songCountLbl');
+      countLbl.textContent = cachedSongs.length;
+
+      if (cachedSongs.length === 0) {
+        box.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 8px;">Đang chờ ESP32 đồng bộ danh sách bài hát từ thẻ nhớ MicroSD...</div>`;
+        return;
+      }
+
+      const q = (document.getElementById('songSearchInput').value || '').toLowerCase().trim();
+      const frag = document.createDocumentFragment();
+      let shown = 0;
+
+      cachedSongs.forEach((raw, idx) => {
+        const cleanTitle = cachedDisplaySongs[idx] || raw.replace(/\.mp3$/i, '');
+        if (q && !raw.toLowerCase().includes(q) && !cleanTitle.toLowerCase().includes(q)) return;
+
+        shown++;
+        const isActive = currentPlayingIndex === idx && currentPlayingState;
+        const btn = document.createElement('button');
+        btn.className = 'song-item' + (isActive ? ' active' : '');
+        btn.onclick = () => selectAndPlaySong(idx + 1, cleanTitle);
+        btn.innerHTML = `
+          <span class="song-num">${idx + 1}</span>
+          <span class="song-name" title="${escapeHtml(raw)}">${escapeHtml(cleanTitle)}</span>
+          <span class="song-play-icon">${isActive ? '♫' : '▶'}</span>
+        `;
+        frag.appendChild(btn);
+      });
+
+      box.innerHTML = '';
+      if (shown === 0) {
+        box.innerHTML = `<div style="color:var(--muted);font-size:13px;text-align:center;padding:18px;">Không tìm thấy bài hát phù hợp.</div>`;
+      } else {
+        box.appendChild(frag);
+      }
+    }
+
+    async function selectAndPlaySong(index1Based, title) {
+      setPlayingVisual(true, title, index1Based - 1);
+      await fetch('/api/play-song', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: index1Based })
+      });
+    }
+
+    function togglePlayPause() {
+      if (currentPlayingState) {
+        setPlayingVisual(false, currentPlayingTitle, currentPlayingIndex);
+        sendCmd('AI_STOP');
+      } else {
+        if (currentPlayingIndex >= 0 && cachedSongs[currentPlayingIndex]) {
+          const title = cachedDisplaySongs[currentPlayingIndex] || cachedSongs[currentPlayingIndex];
+          setPlayingVisual(true, title, currentPlayingIndex);
+          sendCmd('AI_RESUME');
+        } else if (cachedSongs.length > 0) {
+          selectAndPlaySong(1, cachedDisplaySongs[0] || cachedSongs[0]);
+        } else {
+          sendCmd('AI_PLAY');
+        }
+      }
+    }
+
+    function playPrevSong() {
+      if (cachedSongs.length === 0) return;
+      const prevIdx = currentPlayingIndex > 0 ? currentPlayingIndex - 1 : cachedSongs.length - 1;
+      selectAndPlaySong(prevIdx + 1, cachedDisplaySongs[prevIdx] || cachedSongs[prevIdx]);
+    }
+
+    function playRandomSong() {
+      if (cachedSongs.length === 0) return sendCmd('AI_PLAY');
+      const rIdx = Math.floor(Math.random() * cachedSongs.length);
+      selectAndPlaySong(rIdx + 1, cachedDisplaySongs[rIdx] || cachedSongs[rIdx]);
+    }
+
+    /* ================= VOLUME & CHARTS ================= */
     function previewVolUI(v) {
       volLockUntil = Date.now() + 5000;
       const val = Math.max(0, Math.min(100, Number(v)));
@@ -448,6 +1164,7 @@
     const chartHum   = makeMiniChart('chartHum',   'Độ ẩm (%)',     '#06b6d4', 'rgba(6,182,212,0.16)',  0, 100);
     const chartLight = makeMiniChart('chartLight', 'Ánh sáng (%)',  '#facc15', 'rgba(250,204,21,0.16)', 0, 100);
     const chartBat   = makeMiniChart('chartBat',   'Pin (V)',       '#22c55e', 'rgba(34,197,94,0.16)',  0, 4.5);
+    const chartSound = makeMiniChart('chartSound', 'Âm thanh (dB)', '#a855f7', 'rgba(168,85,247,0.18)', 30, 100);
 
     function pushChartPoint(chart, label, value) {
       chart.data.labels.push(label);
@@ -465,6 +1182,80 @@
       setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
     }
 
+    /* ================= SENSOR HISTORY TABLE ================= */
+    function renderSensorHistory(highlightFirst = false) {
+      const tbody = document.getElementById('historyTableBody');
+      document.getElementById('historyCountBadge').textContent = `${sensorHistoryRows.length} bản ghi`;
+
+      if (sensorHistoryRows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:20px;">Chưa có dữ liệu lịch sử cảm biến.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = sensorHistoryRows.slice(0, 60).map((r, i) => {
+        const batText = (r.usbPower || Number(r.bat_pct) < 0)
+          ? 'USB'
+          : `${Number(r.bat_v || 0).toFixed(2)}V (${r.bat_pct}%)`;
+        const almOn = Number(r.alarm_on) === 1;
+        const created = r.created_at ? String(r.created_at).replace('T', ' ').slice(0, 19) : '--';
+        return `
+          <tr class="${highlightFirst && i === 0 ? 'row-new' : ''}">
+            <td style="color:var(--muted)">${escapeHtml(r.id ?? (sensorHistoryRows.length - i))}</td>
+            <td>${escapeHtml(created)}</td>
+            <td>${escapeHtml(r.timeStr || '--:--:--')}</td>
+            <td style="color:#fb923c;font-weight:700">${Number(r.temp || 0)} °C</td>
+            <td style="color:#22d3ee;font-weight:700">${Number(r.hum || 0)} %</td>
+            <td style="color:#facc15;font-weight:700">${Number(r.light || 0)} %</td>
+            <td style="color:#c084fc;font-weight:700">${Number(r.soundDb || 35)} dB</td>
+            <td style="color:#4ade80">${escapeHtml(batText)}</td>
+            <td>Mode ${escapeHtml(r.mode ?? 5)}</td>
+            <td><span class="badge-mini ${almOn ? 'badge-on' : 'badge-off'}">${escapeHtml(r.alarm_str || '--:--')} ${almOn ? '(Bật)' : '(Tắt)'}</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function refreshSensorHistory() {
+      try {
+        const res = await fetch('/api/history/sensors');
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.rows)) {
+          sensorHistoryRows = data.rows;
+          renderSensorHistory(false);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function exportHistoryCsv() {
+      if (sensorHistoryRows.length === 0) return alert('Chưa có dữ liệu lịch sử để xuất CSV.');
+      const header = ['id', 'created_at', 'time_ds1307', 'temp_C', 'hum_pct', 'light_pct', 'sound_db', 'bat_pct', 'bat_v', 'mode', 'alarm_str', 'alarm_on'];
+      const lines = [header.join(',')];
+      sensorHistoryRows.forEach((r) => {
+        lines.push([
+          r.id ?? '',
+          `"${String(r.created_at || '')}"`,
+          `"${String(r.timeStr || '')}"`,
+          r.temp ?? 0,
+          r.hum ?? 0,
+          r.light ?? 0,
+          r.soundDb ?? 35,
+          r.bat_pct ?? -1,
+          r.bat_v ?? 0,
+          r.mode ?? 5,
+          `"${String(r.alarm_str || '--:--')}"`,
+          r.alarm_on ?? 0
+        ].join(','));
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'musicbox_sensor_history.csv';
+      a.click();
+    }
+
+    /* ================= TELEMETRY & SOCKET ================= */
     function updateTelemetry(d) {
       document.getElementById('espDot').className = 'brand-dot' + (d.online ? ' online' : '');
       document.getElementById('espStatusText').textContent = d.online ? `ESP32: Mode ${d.mode || 5}` : 'ESP32: Offline';
@@ -476,13 +1267,26 @@
         document.getElementById('volTextSensors').textContent = d.vol + '%';
       }
 
-      const npBar = document.getElementById('nowPlayingBar');
-      if (d.aiPlaying && d.currentSong) {
-        npBar.classList.add('show');
-        document.getElementById('nowPlayingText').textContent = 'Đang phát: ' + d.currentSong;
-      } else {
-        npBar.classList.remove('show');
+      const songArr = Array.isArray(d.songList) ? d.songList : [];
+      const dispArr = Array.isArray(d.displayList) ? d.displayList : [];
+      const songsKey = songArr.join('|');
+      if (songArr.length > 0 && songsKey !== lastSongsCsv) {
+        lastSongsCsv = songsKey;
+        cachedSongs = songArr;
+        cachedDisplaySongs = dispArr;
+
+        const sel = document.getElementById('ringSelect');
+        sel.innerHTML = '';
+        songArr.forEach((name, idx) => {
+          const opt = document.createElement('option');
+          opt.value = String(idx + 1);
+          opt.textContent = `${idx + 1}. ${dispArr[idx] || name}`;
+          sel.appendChild(opt);
+        });
+        renderPlaylist();
       }
+
+      setPlayingVisual(Boolean(d.aiPlaying), d.currentSong || currentPlayingTitle, d.currentSongIndex);
 
       const batFill = document.getElementById('batFill');
       const batText = document.getElementById('batText');
@@ -505,20 +1309,6 @@
 
       document.getElementById('ringtoneName').textContent = d.ringtone || 'Chưa chọn';
 
-      const songArr = Array.isArray(d.songList) ? d.songList : [];
-      const songsKey = songArr.join('|');
-      if (songArr.length > 0 && songsKey !== lastSongsCsv) {
-        lastSongsCsv = songsKey;
-        const sel = document.getElementById('ringSelect');
-        sel.innerHTML = '';
-        songArr.forEach((name, idx) => {
-          const opt = document.createElement('option');
-          opt.value = String(idx + 1);
-          opt.textContent = `${idx + 1}. ${name}`;
-          sel.appendChild(opt);
-        });
-      }
-
       const t = Number(d.temp || 0);
       const h = Number(d.hum || 0);
       const l = Number(d.light || 0);
@@ -536,6 +1326,10 @@
       setGauge('arcHum', h, 100);
       setGauge('arcLight', l, 100);
 
+      if (!webMicRunning && typeof d.soundDb === 'number') {
+        updateSoundUI(d.soundDb, d.soundSource || 'ESP32 INMP441', d.online);
+      }
+
       if (d.online) {
         const label = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         pushChartPoint(chartTemp,  label, t);
@@ -545,14 +1339,106 @@
       }
     }
 
-    socket.on('init', ({ deviceState, chatHistory }) => {
+    /* ================= SOUND SENSOR (ESP32 WAV + WEB AUDIO API MIC) ================= */
+    let webMicRunning = false;
+    let micAudioCtx = null;
+    let micStream = null;
+    let micAnalyser = null;
+    let micRafId = null;
+    let lastSoundChartPush = 0;
+    let lastSoundServerSync = 0;
+
+    function updateSoundUI(dbVal, sourceLabel, pushChart = true) {
+      const db = Math.round(Math.max(30, Math.min(100, Number(dbVal || 35))));
+      const pct = Math.max(0, Math.min(100, ((db - 30) / 70) * 100));
+      document.getElementById('valSound').textContent = db + ' dB';
+      document.getElementById('lblChartSound').textContent = db + ' dB';
+      document.getElementById('soundSourceSub').textContent = 'Nguồn: ' + (sourceLabel || 'Mic');
+      document.getElementById('soundVuFill').style.width = pct.toFixed(0) + '%';
+      setGauge('arcSound', db - 30, 70);
+
+      const now = Date.now();
+      if (pushChart && now - lastSoundChartPush >= 500) {
+        lastSoundChartPush = now;
+        const lbl = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        pushChartPoint(chartSound, lbl, db);
+      }
+    }
+
+    async function toggleWebMicSensor() {
+      const btn = document.getElementById('btnLiveMicMeter');
+      if (webMicRunning) {
+        webMicRunning = false;
+        if (micRafId) cancelAnimationFrame(micRafId);
+        if (micStream) micStream.getTracks().forEach(t => t.stop());
+        if (micAudioCtx) await micAudioCtx.close();
+        micStream = null; micAudioCtx = null; micAnalyser = null;
+        btn.className = 'btn btn-sec';
+        btn.textContent = '🎙 Bật đo Mic trực tiếp';
+        document.getElementById('soundSourceSub').textContent = 'Nguồn: ESP32 INMP441 / Web Mic';
+        return;
+      }
+
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = micAudioCtx.createMediaStreamSource(micStream);
+        micAnalyser = micAudioCtx.createAnalyser();
+        micAnalyser.fftSize = 512;
+        src.connect(micAnalyser);
+
+        webMicRunning = true;
+        btn.className = 'btn btn-danger';
+        btn.textContent = '⏹ Dừng đo Mic';
+
+        const buf = new Float32Array(micAnalyser.fftSize);
+        const loop = () => {
+          if (!webMicRunning || !micAnalyser) return;
+          micAnalyser.getFloatTimeDomainData(buf);
+          let sum = 0;
+          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+          const rms = Math.sqrt(sum / buf.length);
+          const dbfs = 20 * Math.log10(Math.max(rms, 1e-5));
+          const db = Math.round(Math.max(30, Math.min(100, dbfs + 95)));
+          updateSoundUI(db, 'Web Mic (Trực tiếp)', true);
+
+          if (Date.now() - lastSoundServerSync >= 2000) {
+            lastSoundServerSync = Date.now();
+            fetch('/api/sound', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ soundDb: db, source: 'Web Mic' })
+            }).catch(() => {});
+          }
+          micRafId = requestAnimationFrame(loop);
+        };
+        loop();
+      } catch (err) {
+        alert('Không thể truy cập Micro trình duyệt: ' + err.message);
+      }
+    }
+
+    socket.on('init', ({ deviceState, chatHistory, sensorHistory }) => {
       updateTelemetry(deviceState);
-      chatHistory.forEach(appendMsg);
+      (chatHistory || []).forEach(appendMsg);
+      if (Array.isArray(sensorHistory) && sensorHistory.length > 0) {
+        sensorHistoryRows = sensorHistory;
+        renderSensorHistory(false);
+      } else {
+        refreshSensorHistory();
+      }
     });
+
     socket.on('telemetry', updateTelemetry);
     socket.on('chat', appendMsg);
+    socket.on('sensor_history_entry', (entry) => {
+      sensorHistoryRows.unshift(entry);
+      if (sensorHistoryRows.length > 100) sensorHistoryRows.pop();
+      renderSensorHistory(true);
+    });
 
-    async function sendChat() {
+    /* ================= CHAT, COMMANDS & VOICE MIC ================= */
+    async function sendChat(viaMic = false) {
       const inp = document.getElementById('chatInput');
       const text = inp.value.trim();
       if (!text) return;
@@ -560,8 +1446,13 @@
       await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, viaMic })
       });
+    }
+
+    function quickAsk(text) {
+      document.getElementById('chatInput').value = text;
+      sendChat(false);
     }
 
     async function sendCmd(cmd) {
@@ -610,19 +1501,37 @@
 
     function startVoice() {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SR) return alert('Trình duyệt không hỗ trợ nhận diện giọng nói.');
+      if (!SR) return alert('Trình duyệt không hỗ trợ nhận diện giọng nói. Hãy dùng Chrome hoặc Edge.');
       const rec = new SR();
       rec.lang = 'vi-VN';
-      const btn = document.getElementById('micBtn');
-      btn.classList.add('listening');
-      btn.textContent = 'Đang nghe...';
+      rec.interimResults = false;
+      const btn1 = document.getElementById('micBtn');
+      const btn2 = document.getElementById('micBtnTop');
+      [btn1, btn2].forEach(b => {
+        if (!b) return;
+        b.classList.add('listening');
+        b.textContent = '🎙 Đang nghe...';
+      });
       rec.onresult = (e) => {
-        document.getElementById('chatInput').value = e.results[0][0].transcript;
-        sendChat();
+        const transcript = e.results[0][0].transcript;
+        document.getElementById('chatInput').value = transcript;
+        sendChat(true);
+      };
+      rec.onerror = () => {
+        [btn1, btn2].forEach(b => {
+          if (!b) return;
+          b.classList.remove('listening');
+        });
+        btn1.textContent = '🎙 Mic';
+        btn2.textContent = '🎙 Nói mở nhạc';
       };
       rec.onend = () => {
-        btn.classList.remove('listening');
-        btn.textContent = 'Mic';
+        [btn1, btn2].forEach(b => {
+          if (!b) return;
+          b.classList.remove('listening');
+        });
+        btn1.textContent = '🎙 Mic';
+        btn2.textContent = '🎙 Nói mở nhạc';
       };
       rec.start();
     }
